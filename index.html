@@ -390,6 +390,7 @@
   <div class="export-section">
     <button class="export-btn" onclick="exportData('spending')">Export Spending Data</button>
     <button class="export-btn" onclick="exportData('all')">Export All Data</button>
+    <button class="export-btn" style="color: var(--red); border-color: var(--red);" onclick="clearAllData()">Clear All Data</button>
     <div class="data-count" id="data-counts"></div>
   </div>
 </div>
@@ -711,7 +712,6 @@ async function exportData(type) {
   const blob = new Blob([jsonString], {type: 'application/json'});
   const file = new File([blob], filename, {type: 'application/json'});
 
-  // Use Web Share API (iOS Share sheet) if available
   if (navigator.canShare && navigator.canShare({files: [file]})) {
     try {
       await navigator.share({
@@ -725,7 +725,6 @@ async function exportData(type) {
       }
     }
   } else {
-    // Fallback for desktop browsers
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -733,6 +732,19 @@ async function exportData(type) {
     a.click();
     URL.revokeObjectURL(url);
     showToast('Exported ' + type);
+  }
+}
+
+function clearAllData() {
+  if (confirm('Clear all tracker data? This cannot be undone.')) {
+    localStorage.removeItem('q2_spending');
+    localStorage.removeItem('q2_defusion');
+    localStorage.removeItem('q2_checkin');
+    renderRecentSpending();
+    renderRecentDefusion();
+    renderRecentCheckin();
+    updateCounts();
+    showToast('All data cleared');
   }
 }
 
