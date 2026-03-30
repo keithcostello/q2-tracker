@@ -57,11 +57,7 @@
     color: var(--accent);
     border-bottom-color: var(--accent);
   }
-  .tab-btn .tab-icon {
-    display: block;
-    font-size: 20px;
-    margin-bottom: 2px;
-  }
+  .tab-btn .tab-icon { display: block; font-size: 20px; margin-bottom: 2px; }
   .tab-content {
     flex: 1;
     overflow-y: auto;
@@ -692,22 +688,52 @@ function renderRecentCheckin() {
     }).join('');
 }
 
-function exportData(type) {
+async function exportData(type) {
   let exportObj = {};
   const now = new Date().toISOString().split('T')[0];
+  const filename = 'q2-tracker-' + (type === 'all' ? 'all' : type) + '-' + now + '.json';
+
   if (type === 'all') {
-    exportObj = { exported: new Date().toISOString(), spending: getData('spending'), defusion: getData('defusion'), checkin: getData('checkin') };
+    exportObj = {
+      exported: new Date().toISOString(),
+      spending: getData('spending'),
+      defusion: getData('defusion'),
+      checkin: getData('checkin')
+    };
   } else {
-    exportObj = { exported: new Date().toISOString(), [type]: getData(type) };
+    exportObj = {
+      exported: new Date().toISOString(),
+      [type]: getData(type)
+    };
   }
-  const blob = new Blob([JSON.stringify(exportObj, null, 2)], {type: 'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'q2-tracker-' + (type === 'all' ? 'all' : type) + '-' + now + '.json';
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast('Exported ' + type);
+
+  const jsonString = JSON.stringify(exportObj, null, 2);
+  const blob = new Blob([jsonString], {type: 'application/json'});
+  const file = new File([blob], filename, {type: 'application/json'});
+
+  // Use Web Share API (iOS Share sheet) if available
+  if (navigator.canShare && navigator.canShare({files: [file]})) {
+    try {
+      await navigator.share({
+        title: 'Q2 Tracker Data',
+        files: [file]
+      });
+      showToast('Exported ' + type);
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        showToast('Export cancelled');
+      }
+    }
+  } else {
+    // Fallback for desktop browsers
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Exported ' + type);
+  }
 }
 
 function updateCounts() {
