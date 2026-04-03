@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Q2 Tracker — Login</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  body {
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+  }
+  .login-card {
+    width: 100%;
+    max-width: 360px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px 24px;
+    text-align: center;
+  }
+  .login-card h1 {
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .login-card p {
+    font-size: 14px;
+    color: var(--text-dim);
+    margin-bottom: 24px;
+  }
+  .login-input {
+    width: 100%;
+    padding: 14px 16px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 16px;
+    margin-bottom: 16px;
+    outline: none;
+    -webkit-appearance: none;
+  }
+  .login-input:focus {
+    border-color: var(--accent);
+  }
+  .login-error {
+    color: var(--red);
+    font-size: 13px;
+    margin-bottom: 16px;
+    min-height: 18px;
+  }
+</style>
+</head>
+<body>
+
+<div class="login-card">
+  <h1>Q2 Tracker</h1>
+  <p>Enter your access code to continue</p>
+
+  <form method="post" action="/login">
+    <input
+      type="password"
+      name="token"
+      class="login-input"
+      placeholder="Access code"
+      autocomplete="current-password"
+      autofocus
+      required
+    >
+    <div class="login-error">{{ error }}</div>
+    <button type="submit" class="save-btn">Sign In</button>
+  </form>
+</div>
+
+</body>
+</html>
