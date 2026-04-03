@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#6c8cff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Pantry — Runsheet</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="pantry-header">
+    <a href="index.html" class="back-btn">&larr;</a>
+    <h1>Pantry</h1>
+  </div>
+
+  <div class="pantry-filters">
+    <button class="filter-btn active" data-filter="all">All</button>
+    <button class="filter-btn" data-filter="fruit">Fruits</button>
+    <button class="filter-btn" data-filter="vegetable">Vegetables</button>
+  </div>
+
+  <div id="pantryContent">
+    <div class="loading"><span class="loading-dot">Loading pantry...</span></div>
+  </div>
+
+  <div class="pantry-save" id="pantrySaveBar" style="display:none">
+    <button id="pantrySaveBtn">Save Changes</button>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API_BASE = window.location.origin;
+    const TOKEN = localStorage.getItem('runsheet_token');
+
+    if (!TOKEN) { window.location.href = 'index.html'; }
+
+    const headers = {
+      'Authorization': `Bearer ${TOKEN}`,
+      'Content-Type': 'application/json'
+    };
+
+    let pantryItems = [];
+    let changes = {};
+    let activeFilter = 'all';
+
+    async function loadPantry() {
+      try {
+        const resp = await fetch(`${API_BASE}/api/pantry`, { headers });
+        if (resp.status === 401) { localStorage.removeItem('runsheet_token'); window.location.href = 'index.html'; return; }
+        pantryItems = await resp.json();
+        render();
+      } catch (e) {
+        document.getElementById('pantryContent').innerHTML =
+          '<div class="loading">Could not load pantry</div>';
+      }
+    }
+
+    function render() {
+      const container = document.getElementById('pantryContent');
+      const filtered = pantryItems.filter(i =>
+        activeFilter === 'all' || i.category === activeFilter
+      );
+
+      // Group by category
+      const groups = {};
+      filtered.forEach(item => {
+        const cat = item.category;
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(item);
+      });
+
+      let html = '';
+      for (const [cat, items] of Object.entries(groups)) {
+        html += `<div class="pantry-section-title">${cat === 'fruit' ? '🍎 Fruits' : '🥬 Vegetables'}</div>`;
+        html += '<div class="pantry-list">';
+        items.sort((a, b) => a.name.localeCompare(b.name)).forEach(item => {
+          const stocked = item.name in changes ? changes[item.name] : item.currently_stocked;
+          html += `
+            <div class="pantry-item">
+              <span class="pantry-item-name">${item.name}</span>
+              <button class="pantry-toggle ${stocked ? 'on' : ''}"
+                      data-name="${item.name}" data-cat="${item.category}"
+                      data-stocked="${stocked}"></button>
+            </div>`;
+        });
+        html += '</div>';
+      }
+      container.innerHTML = html;
+
+      // Bind toggles
+      container.querySelectorAll('.pantry-toggle').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const name = btn.dataset.name;
+          const current = btn.dataset.stocked === 'true';
+          const newVal = !current;
+          btn.dataset.stocked = String(newVal);
+          btn.classList.toggle('on', newVal);
+          changes[name] = newVal;
+          document.getElementById('pantrySaveBar').style.display = 'block';
+        });
+      });
+    }
+
+    // Filter buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeFilter = btn.dataset.filter;
+        render();
+      });
+    });
+
+    // Save
+    document.getElementById('pantrySaveBtn').addEventListener('click', async () => {
+      const items = pantryItems.map(item => ({
+        name: item.name,
+        category: item.category,
+        currently_stocked: item.name in changes ? changes[item.name] : item.currently_stocked
+      }));
+
+      try {
+        const resp = await fetch(`${API_BASE}/api/pantry`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ items })
+        });
+        if (resp.ok) {
+          showToast('Pantry updated');
+          changes = {};
+          document.getElementById('pantrySaveBar').style.display = 'none';
+          loadPantry();
+        }
+      } catch (e) {
+        showToast('Save failed', true);
+      }
+    });
+
+    function showToast(msg, warn) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show' + (warn ? ' warn' : '');
+      setTimeout(() => t.className = 'toast', 2000);
+    }
+
+    loadPantry();
+  </script>
+</body>
+</html>

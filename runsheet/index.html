@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#6c8cff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Runsheet">
+  <title>Daily Runsheet</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+</head>
+<body>
+
+  <!-- Login Screen -->
+  <div id="loginScreen" class="login-screen hidden">
+    <div class="login-card">
+      <h2>Daily Runsheet</h2>
+      <p>Enter your token to get started</p>
+      <input type="password" id="tokenInput" placeholder="API token" autocomplete="off">
+      <div class="login-error" id="loginError"></div>
+      <button id="loginBtn">Sign In</button>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div id="app" class="hidden">
+    <!-- Header -->
+    <div class="header">
+      <div>
+        <h1>Today's Plan</h1>
+        <div class="subtitle" id="dayLabel"></div>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="addBtn" title="Add item">+</button>
+        <a href="pantry.html" class="icon-btn" title="Pantry">&#x1F34E;</a>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-bar">
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+      </div>
+      <div class="progress-label" id="progressLabel">0 / 0</div>
+    </div>
+
+    <!-- Add Item Bar (hidden by default) -->
+    <div class="add-item-bar hidden" id="addItemBar">
+      <input class="add-input" id="addItemInput" placeholder="What do you need to do?" maxlength="100">
+      <button class="add-submit" id="addItemSubmit">Add</button>
+    </div>
+    <div class="insert-picker" id="insertPicker">
+      <select id="insertPosition"></select>
+    </div>
+
+    <!-- Item List -->
+    <div class="item-list" id="itemList">
+      <div class="loading"><span class="loading-dot">Loading plan...</span></div>
+    </div>
+  </div>
+
+  <!-- Food Choice Modal -->
+  <div class="modal-overlay" id="foodModal">
+    <div class="modal">
+      <div class="modal-title" id="foodModalTitle">Choose</div>
+      <div class="modal-subtitle" id="foodModalSubtitle">What are you having?</div>
+      <div class="choice-grid" id="foodChoiceGrid"></div>
+      <button class="modal-confirm hidden" id="foodModalConfirm" disabled>Confirm Selection</button>
+      <button class="modal-close" id="foodModalClose">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Check-in Modal -->
+  <div class="modal-overlay" id="checkinModal">
+    <div class="modal">
+      <div class="modal-title">Quick check-in</div>
+      <div class="modal-subtitle">How are you feeling after your workout?</div>
+      <div class="checkin-section">
+        <div class="checkin-label">Energy</div>
+        <div class="scale-row" id="energyScale"></div>
+      </div>
+      <div class="checkin-section">
+        <div class="checkin-label">Mood</div>
+        <div class="scale-row" id="moodScale"></div>
+      </div>
+      <button class="checkin-submit" id="checkinSubmit" disabled>Save</button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

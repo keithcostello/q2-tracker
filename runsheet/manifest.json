@@ -1,0 +1,22 @@
+{
+  "name": "Daily Runsheet",
+  "short_name": "Runsheet",
+  "description": "Daily plan tracker — follow the sequence, capture as you go",
+  "start_url": "/runsheet/",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#6c8cff",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
