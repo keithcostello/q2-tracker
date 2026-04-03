@@ -2,6 +2,7 @@
 
 import json
 import os
+import logging
 from datetime import date, datetime
 from typing import Optional
 
@@ -18,16 +19,39 @@ from app.models import (
     PlanStatus, ItemStatus, ItemCategory, ChoiceType,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/runsheet", dependencies=[Depends(verify_api_token)])
 
 
 # --- Load Schedule Config from JSON ---
 
-_ROUTER_DIR = os.path.dirname(os.path.abspath(__file__))       # app/routers/
-_APP_DIR = os.path.dirname(_ROUTER_DIR)                        # app/
-_PROJECT_DIR = os.path.dirname(_APP_DIR)                       # q2-tracker-backend/
-_CONFIG_PATH = os.path.join(_PROJECT_DIR, "schedule_config.json")
+def _find_config() -> str:
+    """Try multiple paths to find schedule_config.json."""
+    candidates = [
+        # Path relative to this file: app/routers/ -> app/ -> repo root
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "schedule_config.json"),
+        # Path relative to cwd (Railway typically runs from repo root)
+        os.path.join(os.getcwd(), "schedule_config.json"),
+        # Absolute fallback for nixpacks
+        "/app/schedule_config.json",
+    ]
+    for path in candidates:
+        logger.info(f"Checking config path: {path} -> exists={os.path.exists(path)}")
+        if os.path.isfile(path):
+            logger.info(f"Found schedule_config.json at: {path}")
+            return path
+    # Log diagnostic info
+    cwd = os.getcwd()
+    logger.error(f"schedule_config.json not found. cwd={cwd}")
+    try:
+        logger.error(f"cwd contents: {os.listdir(cwd)}")
+    except Exception:
+        pass
+    raise FileNotFoundError(f"schedule_config.json not found. Tried: {candidates}")
 
+
+_CONFIG_PATH = _find_config()
 with open(_CONFIG_PATH, "r") as _f:
     SCHEDULE_CONFIG = json.load(_f)
 

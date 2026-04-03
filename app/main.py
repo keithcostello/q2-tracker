@@ -1,4 +1,5 @@
 import os
+import logging
 from datetime import datetime, date, timedelta
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -19,6 +20,8 @@ from app.models import (
     SpendingCategory, TriggerType, DefusionOutcome,
 )
 from app.auth import verify_api_token, require_session, API_TOKEN
+
+logger = logging.getLogger(__name__)
 
 # --- Config ---
 
@@ -51,14 +54,57 @@ app.add_middleware(
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_DIR = os.path.dirname(BASE_DIR)  # q2-tracker-backend/
+PROJECT_DIR = os.path.dirname(BASE_DIR)
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
-# Serve the Daily Runsheet PWA at /runsheet
-runsheet_dir = os.path.join(PROJECT_DIR, "runsheet")
-if os.path.isdir(runsheet_dir):
-    app.mount("/runsheet", StaticFiles(directory=runsheet_dir, html=True), name="runsheet")
+# Serve the Daily Runsheet PWA at /runsheet — try multiple paths
+_runsheet_candidates = [
+    os.path.join(PROJECT_DIR, "runsheet"),
+    os.path.join(os.getcwd(), "runsheet"),
+    "/app/runsheet",
+]
+_runsheet_mounted = False
+for _rpath in _runsheet_candidates:
+    if os.path.isdir(_rpath):
+        app.mount("/runsheet", StaticFiles(directory=_rpath, html=True), name="runsheet")
+        logger.info(f"Mounted /runsheet from {_rpath}")
+        _runsheet_mounted = True
+        break
+
+if not _runsheet_mounted:
+    logger.warning(f"runsheet/ directory not found. Tried: {_runsheet_candidates}")
+
+
+# --- Debug endpoint (temporary — remove after deployment confirmed) ---
+
+@app.get("/api/debug/paths")
+async def debug_paths():
+    """Temporary endpoint to diagnose Railway path issues."""
+    cwd = os.getcwd()
+    base = BASE_DIR
+    proj = PROJECT_DIR
+    try:
+        cwd_contents = os.listdir(cwd)
+    except Exception as e:
+        cwd_contents = str(e)
+    try:
+        proj_contents = os.listdir(proj)
+    except Exception as e:
+        proj_contents = str(e)
+    return {
+        "cwd": cwd,
+        "base_dir": base,
+        "project_dir": proj,
+        "cwd_contents": cwd_contents,
+        "project_dir_contents": proj_contents,
+        "runsheet_mounted": _runsheet_mounted,
+        "runsheet_candidates": {p: os.path.isdir(p) for p in _runsheet_candidates},
+        "config_exists": {
+            "project_dir": os.path.isfile(os.path.join(proj, "schedule_config.json")),
+            "cwd": os.path.isfile(os.path.join(cwd, "schedule_config.json")),
+        },
+    }
 
 
 # --- Pydantic Schemas ---
