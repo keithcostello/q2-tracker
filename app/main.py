@@ -19,7 +19,7 @@ from app.models import (
     Spending, DefusionLog, CheckIn, AppleHealth,
     SpendingCategory, TriggerType, DefusionOutcome,
 )
-from app.auth import verify_api_token, require_session, API_TOKEN
+from app.auth import verify_api_token, require_session, verify_credentials, API_TOKEN
 
 logger = logging.getLogger(__name__)
 
@@ -132,14 +132,13 @@ async def login_page(request: Request, error: str = ""):
 
 
 @app.post("/login")
-async def login_submit(request: Request, token: str = Form(...)):
-    if token == API_TOKEN:
+async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
+    if verify_credentials(username, password):
         request.session["authenticated"] = True
         return RedirectResponse(url="/", status_code=303)
-    # Wrong token — re-render login with error
     return templates.TemplateResponse(
         "login.html",
-        {"request": request, "error": "Wrong access code. Try again."},
+        {"request": request, "error": "Wrong username or password."},
         status_code=200,
     )
 

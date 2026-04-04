@@ -1,6 +1,8 @@
 import pytest
 
 TEST_TOKEN = "test-token-for-testing"
+TEST_USERNAME = "testuser"
+TEST_PASSWORD = "testpass"
 
 
 # --- Unauthenticated API requests return 401 ---
@@ -70,7 +72,7 @@ async def test_status_is_public(client):
     assert resp.json()["status"] == "ok"
 
 
-# --- Wrong token returns 401 ---
+# --- Wrong Bearer token returns 401 ---
 
 @pytest.mark.asyncio
 async def test_wrong_token_post_spending(client):
@@ -170,7 +172,7 @@ async def test_auth_get_health_summary(client):
     assert resp.status_code == 200
 
 
-# --- Page routes require auth ---
+# --- Page routes require session ---
 
 @pytest.mark.asyncio
 async def test_unauth_tracker_redirects_to_login(client):
@@ -193,39 +195,42 @@ async def test_login_page_loads(client):
 # --- Login flow ---
 
 @pytest.mark.asyncio
-async def test_login_with_correct_token(client):
+async def test_login_with_correct_credentials(client):
     resp = await client.post(
         "/login",
-        data={"token": TEST_TOKEN},
+        data={"username": TEST_USERNAME, "password": TEST_PASSWORD},
         follow_redirects=False,
     )
     assert resp.status_code == 303
     assert resp.headers["location"] == "/"
-    # Should set a session cookie
     assert "session" in resp.cookies or any("session" in c for c in resp.headers.get_list("set-cookie"))
 
 @pytest.mark.asyncio
-async def test_login_with_wrong_token(client):
+async def test_login_with_wrong_password(client):
     resp = await client.post(
         "/login",
-        data={"token": "wrong-token"},
+        data={"username": TEST_USERNAME, "password": "wrong-password"},
         follow_redirects=False,
     )
-    # Should stay on login page (200 with error, not redirect)
+    assert resp.status_code == 200
+
+@pytest.mark.asyncio
+async def test_login_with_wrong_username(client):
+    resp = await client.post(
+        "/login",
+        data={"username": "notauser", "password": TEST_PASSWORD},
+        follow_redirects=False,
+    )
     assert resp.status_code == 200
 
 @pytest.mark.asyncio
 async def test_authenticated_session_accesses_tracker(client):
-    # Login first
     login_resp = await client.post(
         "/login",
-        data={"token": TEST_TOKEN},
+        data={"username": TEST_USERNAME, "password": TEST_PASSWORD},
         follow_redirects=False,
     )
-    # Extract cookies from login response
     cookies = login_resp.cookies
-
-    # Access tracker with session cookie
     resp = await client.get("/", cookies=cookies)
     assert resp.status_code == 200
 
@@ -233,7 +238,7 @@ async def test_authenticated_session_accesses_tracker(client):
 async def test_authenticated_session_accesses_dashboard(client):
     login_resp = await client.post(
         "/login",
-        data={"token": TEST_TOKEN},
+        data={"username": TEST_USERNAME, "password": TEST_PASSWORD},
         follow_redirects=False,
     )
     cookies = login_resp.cookies

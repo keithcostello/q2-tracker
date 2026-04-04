@@ -1,9 +1,21 @@
 """Authentication helpers."""
 
 import os
+import bcrypt
 from fastapi import HTTPException, Request
 
 API_TOKEN = os.environ.get("API_TOKEN", "")
+APP_USERNAME = os.environ.get("APP_USERNAME", "amy")
+APP_PASSWORD_HASH = os.environ.get("APP_PASSWORD_HASH", "")
+
+
+def verify_credentials(username: str, password: str) -> bool:
+    """Verify username and bcrypt-hashed password."""
+    if username != APP_USERNAME:
+        return False
+    if not APP_PASSWORD_HASH:
+        return False
+    return bcrypt.checkpw(password.encode(), APP_PASSWORD_HASH.encode())
 
 
 def verify_api_token(request: Request):

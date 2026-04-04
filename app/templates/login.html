@@ -43,6 +43,7 @@
     margin-bottom: 16px;
     outline: none;
     -webkit-appearance: none;
+    box-sizing: border-box;
   }
   .login-input:focus {
     border-color: var(--accent);
@@ -59,16 +60,24 @@
 
 <div class="login-card">
   <h1>Q2 Tracker</h1>
-  <p>Enter your access code to continue</p>
+  <p>Sign in to continue</p>
 
   <form method="post" action="/login">
     <input
-      type="password"
-      name="token"
+      type="text"
+      name="username"
       class="login-input"
-      placeholder="Access code"
-      autocomplete="current-password"
+      placeholder="Username"
+      autocomplete="username"
       autofocus
+      required
+    >
+    <input
+      type="password"
+      name="password"
+      class="login-input"
+      placeholder="Password"
+      autocomplete="current-password"
       required
     >
     <div class="login-error">{{ error }}</div>

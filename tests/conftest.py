@@ -1,4 +1,5 @@
 import os
+import bcrypt
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
@@ -8,6 +9,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test.db"
 os.environ["API_TOKEN"] = "test-token-for-testing"
 os.environ["SESSION_SECRET"] = "test-session-secret"
+os.environ["APP_USERNAME"] = "testuser"
+os.environ["APP_PASSWORD_HASH"] = bcrypt.hashpw(b"testpass", bcrypt.gensalt(rounds=4)).decode()
 
 from app.database import Base, get_db
 from app.main import app
@@ -30,11 +33,14 @@ async def setup_db():
         await conn.run_sync(Base.metadata.create_all)
     yield
     async with test_engine.begin() as conn:
+        # Disable FK checks for clean drop with circular FKs (SQLite)
+        await conn.exec_driver_sql("PRAGMA foreign_keys = OFF")
         await conn.run_sync(Base.metadata.drop_all)
+        await conn.exec_driver_sql("PRAGMA foreign_keys = ON")
 
 
 @pytest_asyncio.fixture
 async def client():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac 
+        yield ac
