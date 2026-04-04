@@ -26,7 +26,11 @@ function init() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') loadPlan();
+    // Only refresh if already in the app (login screen not showing)
+    if (document.visibilityState === 'visible' &&
+        !document.getElementById('app').classList.contains('hidden')) {
+      loadPlan();
+    }
   });
 
   document.getElementById('loginBtn').addEventListener('click', doLogin);
@@ -53,26 +57,20 @@ function init() {
   });
   buildScales();
 
-  // Show login by default, switch to app if session already valid
+  // Always start on login screen — no background loading
   showLogin();
-  tryAutoLogin();
 }
 
 function showLogin() {
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('app').classList.add('hidden');
+  // Clear any previously rendered plan so it can't show through
+  document.getElementById('itemList').innerHTML = '';
 }
 
 function showApp() {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-}
-
-async function tryAutoLogin() {
-  try {
-    const resp = await apiFetch(API_BASE + '/api/runsheet/today');
-    if (resp.ok) { plan = await resp.json(); showApp(); renderPlan(); }
-  } catch (e) { /* stay on login */ }
 }
 
 async function doLogin() {
