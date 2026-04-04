@@ -62,6 +62,7 @@ async function init() {
   document.getElementById('addItemInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') addItem();
   });
+  document.getElementById('regenBtn').addEventListener('click', regeneratePlan);
 
   document.getElementById('foodModalClose').addEventListener('click', () => closeFoodModal(true));
   document.getElementById('foodModalConfirm').addEventListener('click', confirmMultiSelect);
@@ -506,6 +507,28 @@ async function addItem() {
     await apiFetch(API_BASE + '/api/runsheet/edit', { method: 'POST', body: JSON.stringify([{ action: 'add', label, category: 'custom' }]) });
     input.value = ''; toggleAddBar(); showToast('Item added'); loadPlan();
   } catch (e) { showToast('Failed to add', true); }
+}
+
+// ---- Regenerate Plan ----
+
+async function regeneratePlan() {
+  if (!confirm('Regenerate today\u2019s plan? This will reset all items to the latest config.')) return;
+  const btn = document.getElementById('regenBtn');
+  btn.disabled = true;
+  btn.style.opacity = '0.4';
+  try {
+    const resp = await apiFetch(API_BASE + '/api/runsheet/regenerate', { method: 'POST' });
+    if (resp.status === 401) { showLogin(); return; }
+    if (!resp.ok) { showToast('Regenerate failed', true); return; }
+    const data = await resp.json();
+    showToast('Plan regenerated (' + data.item_count + ' items)');
+    loadPlan();
+  } catch (e) {
+    showToast('Regenerate failed', true);
+  } finally {
+    btn.disabled = false;
+    btn.style.opacity = '';
+  }
 }
 
 // ---- Toast ----
