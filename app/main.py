@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -23,6 +24,8 @@ from app.auth import verify_api_token, require_session, verify_credentials, API_
 
 logger = logging.getLogger(__name__)
 
+PACIFIC = ZoneInfo("America/Los_Angeles")
+
 # --- Config ---
 
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me-in-production")
@@ -30,7 +33,7 @@ SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me-in-production")
 
 def current_week() -> tuple[date, date]:
     """Return (Monday, Sunday) of the current week."""
-    today = date.today()
+    today = datetime.now(PACIFIC).date()
     monday = today - timedelta(days=today.weekday())
     sunday = monday + timedelta(days=6)
     return monday, sunday
@@ -327,7 +330,7 @@ async def health_summary(
     db: AsyncSession = Depends(get_db),
 ):
     if summary_date is None:
-        summary_date = date.today()
+        summary_date = datetime.now(PACIFIC).date()
     q = select(AppleHealth).where(AppleHealth.date == summary_date)
     result = await db.execute(q)
     return result.scalars().all()

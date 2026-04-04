@@ -4,6 +4,7 @@ import json
 import os
 import logging
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,6 +21,8 @@ from app.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+PACIFIC = ZoneInfo("America/Los_Angeles")
 
 router = APIRouter(prefix="/api/runsheet", dependencies=[Depends(verify_api_token)])
 
@@ -186,7 +189,7 @@ class FoodChoiceIn(BaseModel):
 @router.get("/today", response_model=DailyPlanOut)
 async def get_today(db: AsyncSession = Depends(get_db)):
     """Return today's plan. Auto-generate if none exists."""
-    today = date.today()
+    today = datetime.now(PACIFIC).date()
     result = await db.execute(
         select(DailyPlan)
         .options(selectinload(DailyPlan.items).selectinload(PlanItem.food_choice))
@@ -209,7 +212,7 @@ async def complete_item(item_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Item not found")
 
     item.status = ItemStatus.DONE.value
-    item.completed_at = datetime.utcnow()
+    item.completed_at = datetime.now(PACIFIC)
     await db.commit()
     await db.refresh(item)
     return {"id": item.id, "status": item.status, "completed_at": item.completed_at.isoformat()}
@@ -247,7 +250,7 @@ async def reset_item(item_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/edit")
 async def edit_plan(edits: list[EditAction], db: AsyncSession = Depends(get_db)):
     """Add, delete, or reorder items in today's plan."""
-    today = date.today()
+    today = datetime.now(PACIFIC).date()
     result = await db.execute(
         select(DailyPlan)
         .options(selectinload(DailyPlan.items))
