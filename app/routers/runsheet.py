@@ -229,6 +229,21 @@ async def skip_item(item_id: int, db: AsyncSession = Depends(get_db)):
     return {"id": item.id, "status": item.status}
 
 
+@router.post("/item/{item_id}/reset")
+async def reset_item(item_id: int, db: AsyncSession = Depends(get_db)):
+    """Reset a done or skipped item back to pending."""
+    result = await db.execute(select(PlanItem).where(PlanItem.id == item_id))
+    item = result.scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    item.status = ItemStatus.PENDING.value
+    item.completed_at = None
+    await db.commit()
+    await db.refresh(item)
+    return {"id": item.id, "status": item.status}
+
+
 @router.post("/edit")
 async def edit_plan(edits: list[EditAction], db: AsyncSession = Depends(get_db)):
     """Add, delete, or reorder items in today's plan."""

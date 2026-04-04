@@ -610,6 +610,33 @@ body {
   color: var(--accent);
 }
 
+/* ---- Drag Handle & Reorder ---- */
+.drag-handle {
+  font-size: 16px;
+  color: var(--text-dim);
+  cursor: grab;
+  padding: 0 6px 0 0;
+  flex-shrink: 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.drag-handle:active { cursor: grabbing; }
+
+.item-card.dragging {
+  opacity: 0.92;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  border-color: var(--accent);
+}
+
+.drag-placeholder {
+  background: var(--surface);
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  opacity: 0.5;
+}
+
 /* ---- Utility ---- */
 .hidden { display: none !important; }
 .section-label {

@@ -133,6 +133,8 @@
           changes = {};
           document.getElementById('pantrySaveBar').style.display = 'none';
           loadPantry();
+        } else {
+          showToast('Save failed', true);
         }
       } catch (e) {
         showToast('Save failed', true);
