@@ -75,7 +75,7 @@ async def seed_pantry(db: AsyncSession = Depends(get_db)):
 
     - Reads all 5 food choice lists: oatmeal_fruits, veggie_bowl_vegetables, snack_vegetables, snack_fruits, pre_workout_fruits
     - Deduplicates items across all lists
-    - Categorizes each as "fruit" or "vegetable" based on which list(s) it appears in
+    - Categorizes each as \"fruit\" or \"vegetable\" based on which list(s) it appears in
     - Creates Pantry records for each unique item (skips if already exists)
     - Sets currently_stocked to False (user updates after shopping)
 

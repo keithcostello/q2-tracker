@@ -2,7 +2,10 @@
 
 import pytest
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from unittest.mock import patch
+
+PACIFIC = ZoneInfo("America/Los_Angeles")
 
 AUTH = {"Authorization": "Bearer test-token-for-testing"}
 
@@ -50,7 +53,7 @@ async def test_get_today_auto_generates_plan(client):
     assert resp.status_code == 200
     data = resp.json()
     assert "id" in data
-    assert data["date"] == date.today().isoformat()
+    assert data["date"] == datetime.now(PACIFIC).date().isoformat()
     assert data["status"] == "active"
     assert len(data["items"]) > 0
 
@@ -137,6 +140,25 @@ async def test_skip_nonexistent_item(client):
 
 
 @pytest.mark.asyncio
+async def test_reset_done_item(client):
+    """Resetting a done item sets it back to pending."""
+    resp = await client.get("/api/runsheet/today", headers=AUTH)
+    item_id = resp.json()["items"][0]["id"]
+
+    await client.post(f"/api/runsheet/item/{item_id}/complete", headers=AUTH)
+
+    resp = await client.post(f"/api/runsheet/item/{item_id}/reset", headers=AUTH)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_reset_nonexistent_item(client):
+    resp = await client.post("/api/runsheet/item/9999/reset", headers=AUTH)
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_complete_then_verify_in_plan(client):
     """After completing an item, GET /today should show it as done."""
     resp = await client.get("/api/runsheet/today", headers=AUTH)
@@ -219,9 +241,6 @@ async def test_edit_add_missing_label(client):
 @pytest.mark.asyncio
 async def test_edit_no_plan_returns_404(client):
     """Edit with no plan for today should return 404."""
-    # Use a mocked date that won't have a plan
-    # Actually we just don't create one first - but the conftest drops all tables
-    # So if we don't call /today first, there's no plan
     resp = await client.post("/api/runsheet/edit", json=[
         {"action": "add", "label": "Test", "category": "custom"}
     ], headers=AUTH)
@@ -245,7 +264,6 @@ async def test_edit_delete_nonexistent_item(client):
 async def test_record_food_choice(client):
     """Recording a food choice for a plan item."""
     resp = await client.get("/api/runsheet/today", headers=AUTH)
-    # Find a meal item
     meal_item = next(
         (i for i in resp.json()["items"] if i["category"] == "meal"),
         resp.json()["items"][0],
@@ -323,7 +341,6 @@ def test_get_week_number():
 def test_get_day_type():
     """Day type should match schedule for the weekday."""
     from app.routers.runsheet import get_day_type
-    # April 3 2026 is a Friday
     dt = get_day_type(date(2026, 4, 3))
     assert "Friday" in dt
 
@@ -331,7 +348,6 @@ def test_get_day_type():
 def test_get_day_type_monday():
     """Monday should include HIIT in the title."""
     from app.routers.runsheet import get_day_type
-    # April 6 2026 is a Monday
     dt = get_day_type(date(2026, 4, 6))
     assert "Monday" in dt
     assert "HIIT" in dt
@@ -341,26 +357,20 @@ def test_week_number_anchored_to_start_date():
     """Week number should be anchored to system start date (2026-03-16), not ISO weeks."""
     from app.routers.runsheet import get_week_number, SYSTEM_START_DATE
     assert SYSTEM_START_DATE == date(2026, 3, 16)
-    # Mar 16-22 = Week 1
     assert get_week_number(date(2026, 3, 16)) == 1
     assert get_week_number(date(2026, 3, 22)) == 1
-    # Mar 23-29 = Week 2
     assert get_week_number(date(2026, 3, 23)) == 2
     assert get_week_number(date(2026, 3, 29)) == 2
-    # Mar 30 - Apr 5 = Week 1
     assert get_week_number(date(2026, 3, 30)) == 1
     assert get_week_number(date(2026, 4, 3)) == 1
-    # Apr 6-12 = Week 2
     assert get_week_number(date(2026, 4, 6)) == 2
 
 
 def test_get_day_items_returns_full_schedule():
     """Day items from JSON should have 20+ items (not the old abbreviated 8-10)."""
     from app.routers.runsheet import get_day_items
-    # Monday should have 25 items per the config
     items = get_day_items(date(2026, 4, 6))  # Monday
     assert len(items) >= 20
-    # Each item has required keys
     for item in items:
         assert "order" in item
         assert "label" in item
