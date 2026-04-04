@@ -425,11 +425,14 @@ body {
 
 /* ---- Login Screen ---- */
 .login-screen {
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100dvh;
+  background: var(--bg);
+  z-index: 9999;
   padding: 24px;
 }
 .login-card {

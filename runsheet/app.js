@@ -84,7 +84,7 @@ async function doLogin() {
   }
 
   try {
-    const resp = await fetch(API_BASE + '/login', {
+    await fetch(API_BASE + '/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ username, password }).toString(),
@@ -92,11 +92,13 @@ async function doLogin() {
       redirect: 'manual'
     });
 
-    // Server issues 303 redirect on success => opaqueredirect / status 0
-    if (resp.type === 'opaqueredirect' || resp.status === 0) {
+    // Verify the session was actually set by hitting a protected endpoint
+    const check = await apiFetch(API_BASE + '/api/runsheet/today');
+    if (check.status === 200) {
       errEl.textContent = '';
       showApp();
-      loadPlan();
+      plan = await check.json();
+      renderPlan();
     } else {
       errEl.textContent = 'Wrong username or password';
     }
