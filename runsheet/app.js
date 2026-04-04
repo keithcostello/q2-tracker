@@ -13,7 +13,15 @@ const CATEGORY_ICONS = {
   shower: '🚿', laundry: '👕'
 };
 
-// Fetch wrapper: always sends session cookie
+// choice_type -> pantry category(ies) to query
+const CHOICE_CAT_MAP = {
+  oatmeal_fruit:    ['fruit'],
+  snack_fruit:      ['fruit'],
+  preworkout_fruit: ['fruit'],
+  veggie_bowl_veg:  ['vegetable'],
+  snack_veg:        ['vegetable', 'fruit'],  // snacks: show all stocked options
+};
+
 function apiFetch(url, init = {}) {
   return fetch(url, {
     ...init,
@@ -24,6 +32,15 @@ function apiFetch(url, init = {}) {
 
 async function init() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+  // Handle browser back button: close open modals instead of navigating away
+  window.addEventListener('popstate', () => {
+    if (document.getElementById('foodModal').classList.contains('open')) {
+      closeFoodModal(false);
+    } else if (document.getElementById('checkinModal').classList.contains('open')) {
+      closeCheckinModal(false);
+    }
+  });
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' &&
@@ -46,17 +63,17 @@ async function init() {
     if (e.key === 'Enter') addItem();
   });
 
-  document.getElementById('foodModalClose').addEventListener('click', closeFoodModal);
+  document.getElementById('foodModalClose').addEventListener('click', () => closeFoodModal(true));
   document.getElementById('foodModalConfirm').addEventListener('click', confirmMultiSelect);
   document.getElementById('foodModal').addEventListener('click', e => {
-    if (e.target === e.currentTarget) closeFoodModal();
+    if (e.target === e.currentTarget) closeFoodModal(true);
   });
   document.getElementById('checkinModal').addEventListener('click', e => {
-    if (e.target === e.currentTarget) closeCheckinModal();
+    if (e.target === e.currentTarget) closeCheckinModal(true);
   });
   buildScales();
 
-  // Check if already authenticated (handles back-nav from pantry without re-login)
+  // Check existing session — handles back-nav from pantry without re-login
   try {
     const resp = await apiFetch(API_BASE + '/api/runsheet/today');
     if (resp.status === 200) {
@@ -99,7 +116,6 @@ async function doLogin() {
       redirect: 'manual'
     });
 
-    // Verify the session was set by hitting a protected endpoint
     const check = await apiFetch(API_BASE + '/api/runsheet/today');
     if (check.status === 200) {
       errEl.textContent = '';
@@ -135,7 +151,6 @@ function renderPlan() {
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   document.getElementById('dayLabel').textContent = days[d.getDay()] + ' — ' + (plan.day_type || '');
 
-  // Sort by scheduled order
   const items = (plan.items || []).slice().sort((a, b) => a.order - b.order);
   const done = items.filter(i => i.status === 'done').length;
   const total = items.length;
@@ -149,6 +164,9 @@ function renderPlan() {
   const list = document.getElementById('itemList');
   list.innerHTML = '';
 
+  // Indices of pending items only (for up/down boundary checks)
+  const pendingIds = items.filter(i => i.status === 'pending').map(i => i.id);
+
   items.forEach((item, idx) => {
     const card = document.createElement('div');
     card.className = 'item-card';
@@ -161,19 +179,31 @@ function renderPlan() {
     const statusIcon = item.status === 'done' ? '✓' : item.status === 'skipped' ? '—' : '';
     const metaHtml = item.food_choice && item.food_choice.selected
       ? '<div class="item-meta">→ ' + item.food_choice.selected + '</div>' : '';
-    const dragHandle = item.status === 'pending'
-      ? '<div class="drag-handle" title="Drag to reorder">⠿</div>' : '';
+
+    let reorderHtml = '';
+    if (item.status === 'pending') {
+      const pIdx = pendingIds.indexOf(item.id);
+      const canUp = pIdx > 0;
+      const canDown = pIdx < pendingIds.length - 1;
+      reorderHtml =
+        '<div class="reorder-btns">' +
+        '<button type="button" class="reorder-btn up-btn" data-id="' + item.id + '"' +
+          (canUp ? '' : ' disabled') + ' title="Move up">↑</button>' +
+        '<button type="button" class="reorder-btn down-btn" data-id="' + item.id + '"' +
+          (canDown ? '' : ' disabled') + ' title="Move down">↓</button>' +
+        '</div>';
+    }
 
     card.innerHTML =
-      dragHandle +
       '<div class="item-icon">' + icon + '</div>' +
       '<div class="item-content"><div class="item-label">' + item.label + '</div>' + metaHtml + '</div>' +
+      reorderHtml +
       '<div class="item-status-icon">' + statusIcon + '</div>';
 
     if (item.status === 'pending') {
       let pressStart = 0, pressTimeout = null, didLongPress = false;
       card.addEventListener('pointerdown', e => {
-        if (e.target.closest('.drag-handle')) return; // drag handle owns this event
+        if (e.target.closest('.reorder-btns')) return;
         pressStart = Date.now(); didLongPress = false;
         pressTimeout = setTimeout(() => {
           didLongPress = true; skipItem(item.id);
@@ -182,21 +212,25 @@ function renderPlan() {
         }, LONG_PRESS_MS);
       });
       card.addEventListener('pointerup', e => {
-        if (e.target.closest('.drag-handle')) return;
+        if (e.target.closest('.reorder-btns')) return;
         clearTimeout(pressTimeout);
         if (!didLongPress && Date.now() - pressStart < LONG_PRESS_MS) handleItemTap(item);
       });
       card.addEventListener('pointerleave', () => clearTimeout(pressTimeout));
+
+      card.querySelectorAll('.up-btn').forEach(btn => {
+        btn.addEventListener('click', e => { e.stopPropagation(); moveItem(item.id, -1, items); });
+      });
+      card.querySelectorAll('.down-btn').forEach(btn => {
+        btn.addEventListener('click', e => { e.stopPropagation(); moveItem(item.id, +1, items); });
+      });
     } else if (item.status === 'done') {
-      // Tap a done item to reopen it
       card.style.cursor = 'pointer';
       card.addEventListener('click', () => resetItem(item.id));
     }
 
     list.appendChild(card);
   });
-
-  initDrag(list);
 
   if (currentIdx >= 0) {
     setTimeout(() => {
@@ -206,101 +240,45 @@ function renderPlan() {
   }
 }
 
-// ---- Drag-to-reorder ----
+// ---- Up/Down reorder ----
 
-function initDrag(list) {
-  let ghost = null;
-  let placeholder = null;
-  let offsetY = 0;
+async function moveItem(itemId, direction, sortedItems) {
+  // Only move among pending items
+  const pending = sortedItems.filter(i => i.status === 'pending');
+  const pIdx = pending.findIndex(i => i.id === itemId);
+  if (pIdx < 0) return;
+  const newPIdx = pIdx + direction;
+  if (newPIdx < 0 || newPIdx >= pending.length) return;
 
-  function onMove(e) {
-    if (!ghost) return;
-    e.preventDefault();
-    ghost.style.top = (e.clientY - offsetY) + 'px';
+  // Swap in the pending sub-list, keeping done/skipped items in place
+  const swapped = [...pending];
+  [swapped[pIdx], swapped[newPIdx]] = [swapped[newPIdx], swapped[pIdx]];
 
-    const ghostMid = parseFloat(ghost.style.top) + ghost.offsetHeight / 2;
-    const cards = [...list.querySelectorAll('.item-card:not(.dragging)')];
-    let placed = false;
-    for (const card of cards) {
-      const r = card.getBoundingClientRect();
-      if (ghostMid < r.top + r.height / 2) {
-        if (placeholder.nextSibling !== card) list.insertBefore(placeholder, card);
-        placed = true;
-        break;
-      }
-    }
-    if (!placed && list.lastChild !== placeholder) list.appendChild(placeholder);
-  }
-
-  async function onUp() {
-    window.removeEventListener('pointermove', onMove);
-    window.removeEventListener('pointerup', onUp);
-    window.removeEventListener('pointercancel', onCancel);
-    if (!ghost) return;
-
-    ghost.classList.remove('dragging');
-    ghost.style.cssText = '';
-    list.insertBefore(ghost, placeholder);
-    placeholder.remove();
-    placeholder = null;
-
-    const newOrder = [...list.querySelectorAll('.item-card[data-id]')]
-      .map(c => parseInt(c.dataset.id));
-    ghost = null;
-
-    try {
-      await apiFetch(API_BASE + '/api/runsheet/edit', {
-        method: 'POST',
-        body: JSON.stringify([{ action: 'reorder', new_order: newOrder }])
-      });
-      loadPlan();
-    } catch (err) {
-      showToast('Reorder failed', true);
-      loadPlan();
-    }
-  }
-
-  function onCancel() {
-    window.removeEventListener('pointermove', onMove);
-    window.removeEventListener('pointerup', onUp);
-    window.removeEventListener('pointercancel', onCancel);
-    if (!ghost) return;
-    ghost.classList.remove('dragging');
-    ghost.style.cssText = '';
-    if (placeholder) { list.insertBefore(ghost, placeholder); placeholder.remove(); placeholder = null; }
-    ghost = null;
-    loadPlan();
-  }
-
-  list.addEventListener('pointerdown', e => {
-    const handle = e.target.closest('.drag-handle');
-    if (!handle) return;
-    const card = handle.closest('.item-card');
-    if (!card) return;
-    e.preventDefault();
-
-    const rect = card.getBoundingClientRect();
-    offsetY = e.clientY - rect.top;
-
-    placeholder = document.createElement('div');
-    placeholder.className = 'drag-placeholder';
-    placeholder.style.height = rect.height + 'px';
-    list.insertBefore(placeholder, card);
-
-    ghost = card;
-    ghost.classList.add('dragging');
-    ghost.style.position = 'fixed';
-    ghost.style.width = rect.width + 'px';
-    ghost.style.left = rect.left + 'px';
-    ghost.style.top = (e.clientY - offsetY) + 'px';
-    ghost.style.zIndex = '500';
-    ghost.style.margin = '0';
-    ghost.style.pointerEvents = 'none';
-
-    window.addEventListener('pointermove', onMove, { passive: false });
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onCancel);
+  // Rebuild full order: done+skipped items keep their original order values;
+  // pending items get new order values interleaved by their original positions
+  const doneItems = sortedItems.filter(i => i.status !== 'pending');
+  // Assign order to pending items sequentially among the combined list
+  // Simpler: just send the new pending order; backend assigns positions by array index
+  const newOrder = sortedItems.map(i => {
+    if (i.status !== 'pending') return i.id;
+    return null; // placeholder
   });
+  // Replace placeholders with swapped pending IDs in order
+  let pCursor = 0;
+  const finalOrder = sortedItems.map(i => {
+    if (i.status !== 'pending') return i.id;
+    return swapped[pCursor++].id;
+  });
+
+  try {
+    await apiFetch(API_BASE + '/api/runsheet/edit', {
+      method: 'POST',
+      body: JSON.stringify([{ action: 'reorder', new_order: finalOrder }])
+    });
+    loadPlan();
+  } catch (e) {
+    showToast('Reorder failed', true);
+  }
 }
 
 // ---- Item actions ----
@@ -342,10 +320,10 @@ function openFoodModal(item) {
   const ct = item.food_choice.choice_type;
   const isMulti = item.food_choice.options && item.food_choice.options.multi_select;
   const names = {
-    oatmeal_fruit: 'Pick a fruit for your oatmeal',
-    veggie_bowl_veg: 'Pick vegetables for your bowl',
-    snack_veg: 'Pick your veggies for ranch plate',
-    snack_fruit: 'Pick a snack fruit',
+    oatmeal_fruit:    'Pick a fruit for your oatmeal',
+    veggie_bowl_veg:  'Pick vegetables for your bowl',
+    snack_veg:        'Pick your snacks',
+    snack_fruit:      'Pick a snack fruit',
     preworkout_fruit: 'Pick a pre-workout fruit'
   };
   document.getElementById('foodModalSubtitle').textContent =
@@ -353,24 +331,31 @@ function openFoodModal(item) {
   const confirmBtn = document.getElementById('foodModalConfirm');
   confirmBtn.classList.toggle('hidden', !isMulti); confirmBtn.disabled = true;
   loadFoodOptions(item, ct, document.getElementById('foodChoiceGrid'), isMulti);
+  // Push state so browser back button closes this modal instead of navigating away
+  history.pushState({ modal: 'food' }, '');
   document.getElementById('foodModal').classList.add('open');
 }
 
 async function loadFoodOptions(item, ct, grid, isMulti) {
   grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-dim);padding:20px">Loading...</div>';
-  const catMap = { oatmeal_fruit:'fruit', snack_fruit:'fruit', preworkout_fruit:'fruit', veggie_bowl_veg:'vegetable', snack_veg:'vegetable' };
-  const category = catMap[ct] || 'fruit';
+  const categories = CHOICE_CAT_MAP[ct] || ['fruit'];
   try {
-    const resp = await apiFetch(API_BASE + '/api/pantry?category=' + category + '&stocked_only=true');
-    const its = await resp.json();
+    const fetches = categories.map(cat =>
+      apiFetch(API_BASE + '/api/pantry?category=' + cat + '&stocked_only=true').then(r => r.json())
+    );
+    const results = await Promise.all(fetches);
+    const its = results.flat();
+
     if (!its.length) {
+      const catLabel = categories.length > 1 ? 'fruits or vegetables' : categories[0] + 's';
       grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-dim);padding:20px">No ' +
-        category + 's stocked — open the pantry and mark what you have</div>';
+        catLabel + ' stocked — open the pantry and mark what you have</div>';
       return;
     }
     grid.innerHTML = '';
     its.forEach(pi => {
       const btn = document.createElement('button');
+      btn.type = 'button';
       btn.className = 'choice-btn'; btn.textContent = pi.name;
       if (isMulti) {
         btn.addEventListener('click', () => {
@@ -389,7 +374,7 @@ async function loadFoodOptions(item, ct, grid, isMulti) {
 }
 
 async function selectFoodChoice(item, ct, selected) {
-  closeFoodModal();
+  closeFoodModal(true);
   try {
     await apiFetch(API_BASE + '/api/runsheet/food-choice', { method: 'POST', body: JSON.stringify({ plan_item_id: item.id, choice_type: ct, selected }) });
     await apiFetch(API_BASE + '/api/runsheet/item/' + item.id + '/complete', { method: 'POST' });
@@ -399,7 +384,7 @@ async function selectFoodChoice(item, ct, selected) {
 
 async function confirmMultiSelect() {
   if (!modalSelected.size || !currentModalItem) return;
-  const sel = [...modalSelected].join(', '); closeFoodModal();
+  const sel = [...modalSelected].join(', '); closeFoodModal(true);
   try {
     await apiFetch(API_BASE + '/api/runsheet/food-choice', { method: 'POST', body: JSON.stringify({ plan_item_id: currentModalItem.id, choice_type: currentModalItem.food_choice.choice_type, selected: sel }) });
     await apiFetch(API_BASE + '/api/runsheet/item/' + currentModalItem.id + '/complete', { method: 'POST' });
@@ -407,7 +392,12 @@ async function confirmMultiSelect() {
   } catch (e) { showToast('Failed to save', true); }
 }
 
-function closeFoodModal() { document.getElementById('foodModal').classList.remove('open'); }
+// popBack: true when the user explicitly closed it (need to pop history state)
+//          false when called from popstate handler (browser already navigated)
+function closeFoodModal(popBack) {
+  document.getElementById('foodModal').classList.remove('open');
+  if (popBack) history.back();
+}
 
 // ---- Check-in Modal ----
 
@@ -420,6 +410,7 @@ function buildScales() {
     const row = document.getElementById(rowId);
     [1,2,3,4,5].forEach(n => {
       const btn = document.createElement('button');
+      btn.type = 'button';
       btn.className = 'scale-btn'; btn.textContent = emojis[n-1]; btn.dataset.value = n;
       btn.addEventListener('click', () => {
         checkinValues[key] = n;
@@ -440,13 +431,17 @@ function openCheckinModal() {
   checkinValues = { energy: null, mood: null };
   document.querySelectorAll('#energyScale .scale-btn, #moodScale .scale-btn').forEach(b => b.classList.remove('selected'));
   document.getElementById('checkinSubmit').disabled = true;
+  history.pushState({ modal: 'checkin' }, '');
   document.getElementById('checkinModal').classList.add('open');
 }
 
-function closeCheckinModal() { document.getElementById('checkinModal').classList.remove('open'); }
+function closeCheckinModal(popBack) {
+  document.getElementById('checkinModal').classList.remove('open');
+  if (popBack) history.back();
+}
 
 async function submitCheckin() {
-  closeCheckinModal();
+  closeCheckinModal(true);
   try {
     await apiFetch(API_BASE + '/api/checkin', { method: 'POST', body: JSON.stringify({ energy: checkinValues.energy, mood: checkinValues.mood }) });
     showToast('Check-in saved');
