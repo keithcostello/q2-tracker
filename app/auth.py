@@ -19,13 +19,18 @@ def verify_credentials(username: str, password: str) -> bool:
 
 
 def verify_api_token(request: Request):
-    """Dependency: verify Bearer token for API routes."""
+    """Dependency: verify Bearer token or session cookie for API routes."""
+    # Accept Bearer token (API clients, tracker pages)
     auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
+    if auth.startswith("Bearer "):
+        token = auth[7:]
+        if token == API_TOKEN:
+            return
         raise HTTPException(status_code=401, detail="Unauthorized")
-    token = auth[7:]
-    if token != API_TOKEN:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    # Accept session cookie (browser-based PWA auth)
+    if require_session(request):
+        return
+    raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def require_session(request: Request):
