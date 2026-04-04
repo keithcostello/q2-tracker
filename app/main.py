@@ -76,37 +76,6 @@ if not _runsheet_mounted:
     logger.warning(f"runsheet/ directory not found. Tried: {_runsheet_candidates}")
 
 
-# --- Debug endpoint (temporary — remove after deployment confirmed) ---
-
-@app.get("/api/debug/paths")
-async def debug_paths():
-    """Temporary endpoint to diagnose Railway path issues."""
-    cwd = os.getcwd()
-    base = BASE_DIR
-    proj = PROJECT_DIR
-    try:
-        cwd_contents = os.listdir(cwd)
-    except Exception as e:
-        cwd_contents = str(e)
-    try:
-        proj_contents = os.listdir(proj)
-    except Exception as e:
-        proj_contents = str(e)
-    return {
-        "cwd": cwd,
-        "base_dir": base,
-        "project_dir": proj,
-        "cwd_contents": cwd_contents,
-        "project_dir_contents": proj_contents,
-        "runsheet_mounted": _runsheet_mounted,
-        "runsheet_candidates": {p: os.path.isdir(p) for p in _runsheet_candidates},
-        "config_exists": {
-            "project_dir": os.path.isfile(os.path.join(proj, "schedule_config.json")),
-            "cwd": os.path.isfile(os.path.join(cwd, "schedule_config.json")),
-        },
-    }
-
-
 # --- Pydantic Schemas ---
 
 class SpendingIn(BaseModel):
@@ -303,6 +272,73 @@ async def create_checkin(data: CheckInIn, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(entry)
     return entry
+
+
+@app.get("/api/checkins", response_model=list[CheckInOut], dependencies=[Depends(verify_api_token)])
+async def get_checkins(
+    start: Optional[date] = None,
+    end: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    if start is None and end is None:
+        start, end = current_week()
+    q = select(CheckIn)
+    if start:
+        q = q.where(CheckIn.timestamp >= datetime.combine(start, datetime.min.time()))
+    if end:
+        q = q.where(CheckIn.timestamp <= datetime.combine(end, datetime.max.time()))
+    q = q.order_by(CheckIn.timestamp.desc())
+    result = await db.execute(q)
+    return result.scalars().all()
+
+
+# --- Health Endpoints (token-protected) ---
+
+@app.post("/api/health", response_model=HealthOut, status_code=201, dependencies=[Depends(verify_api_token)])
+async def create_health(data: HealthIn, db: AsyncSession = Depends(get_db)):
+    entry = AppleHealth(date=data.date, metric=data.metric, value=data.value)
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
+    return entry
+
+
+@app.get("/api/health/trend", response_model=list[HealthOut], dependencies=[Depends(verify_api_token)])
+async def health_trend(
+    metric: str,
+    start: Optional[date] = None,
+    end: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    if start is None and end is None:
+        start, end = current_week()
+    q = select(AppleHealth).where(AppleHealth.metric == metric)
+    if start:
+        q = q.where(AppleHealth.date >= start)
+    if end:
+        q = q.where(AppleHealth.date <= end)
+    q = q.order_by(AppleHealth.date.asc())
+    result = await db.execute(q)
+    return result.scalars().all()
+
+
+@app.get("/api/health/summary", response_model=list[HealthOut], dependencies=[Depends(verify_api_token)])
+async def health_summary(
+    summary_date: Optional[date] = Query(None, alias="date"),
+    db: AsyncSession = Depends(get_db),
+):
+    if summary_date is None:
+        summary_date = date.today()
+    q = select(AppleHealth).where(AppleHealth.date == summary_date)
+    result = await db.execute(q)
+    return result.scalars().all()
+
+
+# --- Status Endpoint (public) ---
+
+@app.get("/api/status")
+async def status():
+    return {"status": "ok"}
 
 
 # --- Register Routers ---

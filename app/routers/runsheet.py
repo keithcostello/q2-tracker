@@ -41,7 +41,6 @@ def _find_config() -> str:
         if os.path.isfile(path):
             logger.info(f"Found schedule_config.json at: {path}")
             return path
-    # Log diagnostic info
     cwd = os.getcwd()
     logger.error(f"schedule_config.json not found. cwd={cwd}")
     try:
@@ -304,22 +303,41 @@ async def edit_plan(edits: list[EditAction], db: AsyncSession = Depends(get_db))
 
 @router.post("/food-choice", status_code=201)
 async def record_food_choice(data: FoodChoiceIn, db: AsyncSession = Depends(get_db)):
-    """Record a food selection for a plan item."""
+    """Record a food selection for a plan item.
+
+    If a FoodChoice already exists for this plan item (e.g. auto-generated),
+    update it in place rather than creating a duplicate.
+    """
     result = await db.execute(select(PlanItem).where(PlanItem.id == data.plan_item_id))
     item = result.scalar_one_or_none()
     if item is None:
         raise HTTPException(status_code=404, detail="Plan item not found")
 
-    choice = FoodChoice(
-        plan_item_id=data.plan_item_id,
-        choice_type=data.choice_type.value,
-        selected=data.selected,
-        options=data.options,
+    # Check for existing FoodChoice (auto-generated plans create one with selected=None)
+    existing_result = await db.execute(
+        select(FoodChoice).where(FoodChoice.plan_item_id == data.plan_item_id)
     )
-    db.add(choice)
-    await db.flush()
+    existing_choice = existing_result.scalar_one_or_none()
 
-    item.food_choice_id = choice.id
+    if existing_choice is not None:
+        # Update existing choice
+        existing_choice.choice_type = data.choice_type.value
+        existing_choice.selected = data.selected
+        if data.options is not None:
+            existing_choice.options = data.options
+        choice = existing_choice
+    else:
+        # Create new choice
+        choice = FoodChoice(
+            plan_item_id=data.plan_item_id,
+            choice_type=data.choice_type.value,
+            selected=data.selected,
+            options=data.options,
+        )
+        db.add(choice)
+        await db.flush()
+        item.food_choice_id = choice.id
+
     await db.commit()
     await db.refresh(choice)
 
