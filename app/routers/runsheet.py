@@ -87,6 +87,16 @@ def get_day_items(d: date) -> list[dict]:
     return template.get("items", [])
 
 
+def get_dinner_info(d: date) -> dict:
+    """Look up tonight's dinner from dinner_rotation based on date and week number.
+
+    Returns dict with 'name', 'calories', 'ingredients' or empty dict if not found.
+    """
+    day_name = _WEEKDAY_NAMES[d.weekday()]
+    week_key = f"week_{get_week_number(d)}"
+    return SCHEDULE_CONFIG.get("dinner_rotation", {}).get(week_key, {}).get(day_name, {})
+
+
 async def auto_generate_plan(d: date, db: AsyncSession) -> DailyPlan:
     """Generate a daily plan from schedule_config.json for the given date."""
     day_type = get_day_type(d)
@@ -101,12 +111,23 @@ async def auto_generate_plan(d: date, db: AsyncSession) -> DailyPlan:
     db.add(plan)
     await db.flush()
 
+    # Look up tonight's dinner for dynamic labels
+    dinner_info = get_dinner_info(d)
+
     items_template = get_day_items(d)
     for cfg_item in items_template:
+        label = cfg_item["label"]
+
+        # Enrich Dinner and Prep labels with tonight's meal info
+        if label == "Dinner" and dinner_info:
+            label = f"Dinner — {dinner_info['name']}"
+        elif label == "Prep vegetables" and dinner_info:
+            label = f"Prep — {dinner_info.get('ingredients', 'vegetables')}"
+
         item = PlanItem(
             plan_id=plan.id,
             order=cfg_item["order"],
-            label=cfg_item["label"],
+            label=label,
             category=cfg_item["category"],
             status=ItemStatus.PENDING.value,
         )
