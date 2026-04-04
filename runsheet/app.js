@@ -224,9 +224,16 @@ function renderPlan() {
       card.querySelectorAll('.down-btn').forEach(btn => {
         btn.addEventListener('click', e => { e.stopPropagation(); moveItem(item.id, +1, items); });
       });
-    } else if (item.status === 'done') {
+    } else if (item.status === 'done' || item.status === 'skipped') {
       card.style.cursor = 'pointer';
-      card.addEventListener('click', () => resetItem(item.id));
+      card.addEventListener('click', () => {
+        // Done food items: reopen the choice modal to change selections
+        if (item.status === 'done' && item.food_choice && item.food_choice.choice_type) {
+          reopenFoodModal(item);
+        } else {
+          resetItem(item.id);
+        }
+      });
     }
 
     list.appendChild(card);
@@ -314,8 +321,28 @@ async function resetItem(itemId) {
 
 // ---- Food Choice Modal ----
 
-function openFoodModal(item) {
-  currentModalItem = item; modalSelected = new Set();
+// Reopen food modal for a done item — pre-populate with existing selections
+function reopenFoodModal(item) {
+  // Reset to pending first so saving re-completes it cleanly
+  apiFetch(API_BASE + '/api/runsheet/item/' + item.id + '/reset', { method: 'POST' })
+    .then(() => {
+      // Reload plan data so item reflects pending, then open modal with pre-selections
+      return apiFetch(API_BASE + '/api/runsheet/today').then(r => r.json());
+    })
+    .then(freshPlan => {
+      plan = freshPlan;
+      const freshItem = (freshPlan.items || []).find(i => i.id === item.id);
+      if (freshItem) openFoodModal(freshItem, item.food_choice ? item.food_choice.selected : null);
+    })
+    .catch(() => openFoodModal(item, item.food_choice ? item.food_choice.selected : null));
+}
+
+function openFoodModal(item, preSelected) {
+  currentModalItem = item;
+  // Pre-populate multi-select from existing comma-separated string
+  modalSelected = preSelected
+    ? new Set(preSelected.split(',').map(s => s.trim()).filter(Boolean))
+    : new Set();
   document.getElementById('foodModalTitle').textContent = item.label;
   const ct = item.food_choice.choice_type;
   const isMulti = item.food_choice.options && item.food_choice.options.multi_select;
@@ -329,7 +356,8 @@ function openFoodModal(item) {
   document.getElementById('foodModalSubtitle').textContent =
     (names[ct] || 'What are you having?') + (isMulti ? ' (tap all that apply)' : '');
   const confirmBtn = document.getElementById('foodModalConfirm');
-  confirmBtn.classList.toggle('hidden', !isMulti); confirmBtn.disabled = true;
+  confirmBtn.classList.toggle('hidden', !isMulti);
+  confirmBtn.disabled = modalSelected.size === 0;
   loadFoodOptions(item, ct, document.getElementById('foodChoiceGrid'), isMulti);
   // Push state so browser back button closes this modal instead of navigating away
   history.pushState({ modal: 'food' }, '');
@@ -357,6 +385,8 @@ async function loadFoodOptions(item, ct, grid, isMulti) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'choice-btn'; btn.textContent = pi.name;
+      // Highlight pre-existing selections
+      if (modalSelected.has(pi.name)) btn.classList.add('selected');
       if (isMulti) {
         btn.addEventListener('click', () => {
           modalSelected.has(pi.name) ? (modalSelected.delete(pi.name), btn.classList.remove('selected'))
