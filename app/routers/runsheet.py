@@ -3,11 +3,13 @@
 import json
 import os
 import logging
+import traceback
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -260,16 +262,23 @@ async def regenerate_plan(db: AsyncSession = Depends(get_db)):
 @router.post("/item/{item_id}/complete")
 async def complete_item(item_id: int, db: AsyncSession = Depends(get_db)):
     """Mark a plan item as done."""
-    result = await db.execute(select(PlanItem).where(PlanItem.id == item_id))
-    item = result.scalar_one_or_none()
-    if item is None:
-        raise HTTPException(status_code=404, detail="Item not found")
+    try:
+        result = await db.execute(select(PlanItem).where(PlanItem.id == item_id))
+        item = result.scalar_one_or_none()
+        if item is None:
+            raise HTTPException(status_code=404, detail="Item not found")
 
-    item.status = ItemStatus.DONE.value
-    item.completed_at = datetime.now(PACIFIC).replace(tzinfo=None)
-    await db.commit()
-    await db.refresh(item)
-    return {"id": item.id, "status": item.status, "completed_at": item.completed_at.isoformat()}
+        item.status = ItemStatus.DONE.value
+        item.completed_at = datetime.now(PACIFIC).replace(tzinfo=None)
+        await db.commit()
+        await db.refresh(item)
+        return {"id": item.id, "status": item.status, "completed_at": item.completed_at.isoformat()}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"complete_item failed: {e}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(status_code=500, content={"detail": str(e), "traceback": traceback.format_exc()})
 
 
 @router.post("/item/{item_id}/skip")
