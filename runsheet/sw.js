@@ -1,4 +1,4 @@
-const CACHE_NAME = 'runsheet-v8';
+const CACHE_NAME = 'runsheet-v9';
 const STATIC_ASSETS = [
   '/runsheet/',
   '/runsheet/index.html',
