@@ -62,7 +62,6 @@ async function init() {
   document.getElementById('addItemInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') addItem();
   });
-  document.getElementById('regenBtn').addEventListener('click', regeneratePlan);
 
   document.getElementById('foodModalClose').addEventListener('click', () => closeFoodModal(true));
   document.getElementById('foodModalConfirm').addEventListener('click', confirmMultiSelect);
@@ -150,7 +149,7 @@ function renderPlan() {
 
   const d = new Date(plan.date + 'T12:00:00');
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  document.getElementById('dayLabel').textContent = days[d.getDay()] + ' — ' + (plan.day_type || '');
+  document.getElementById('dayLabel').textContent = days[d.getDay()] + ' \u2014 ' + (plan.day_type || '');
 
   const items = (plan.items || []).slice().sort((a, b) => a.order - b.order);
   const done = items.filter(i => i.status === 'done').length;
@@ -301,14 +300,16 @@ function handleItemTap(item) {
 
 async function completeItem(itemId) {
   try {
-    await apiFetch(API_BASE + '/api/runsheet/item/' + itemId + '/complete', { method: 'POST' });
+    const resp = await apiFetch(API_BASE + '/api/runsheet/item/' + itemId + '/complete', { method: 'POST' });
+    if (!resp.ok) { showToast('Failed to update', true); return; }
     showToast('Done ✓'); loadPlan();
   } catch (e) { showToast('Failed to update', true); }
 }
 
 async function skipItem(itemId) {
   try {
-    await apiFetch(API_BASE + '/api/runsheet/item/' + itemId + '/skip', { method: 'POST' });
+    const resp = await apiFetch(API_BASE + '/api/runsheet/item/' + itemId + '/skip', { method: 'POST' });
+    if (!resp.ok) { showToast('Failed to update', true); return; }
     showToast('Skipped'); loadPlan();
   } catch (e) { showToast('Failed to update', true); }
 }
@@ -378,7 +379,7 @@ async function loadFoodOptions(item, ct, grid, isMulti) {
     if (!its.length) {
       const catLabel = categories.length > 1 ? 'fruits or vegetables' : categories[0] + 's';
       grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-dim);padding:20px">No ' +
-        catLabel + ' stocked — open the pantry and mark what you have</div>';
+        catLabel + ' stocked \u2014 open the pantry and mark what you have</div>';
       return;
     }
     grid.innerHTML = '';
@@ -409,7 +410,7 @@ async function selectFoodChoice(item, ct, selected) {
   try {
     await apiFetch(API_BASE + '/api/runsheet/food-choice', { method: 'POST', body: JSON.stringify({ plan_item_id: item.id, choice_type: ct, selected }) });
     await apiFetch(API_BASE + '/api/runsheet/item/' + item.id + '/complete', { method: 'POST' });
-    showToast(selected + ' — done ✓'); loadPlan();
+    showToast(selected + ' \u2014 done ✓'); loadPlan();
   } catch (e) { showToast('Failed to save', true); }
 }
 
@@ -419,7 +420,7 @@ async function confirmMultiSelect() {
   try {
     await apiFetch(API_BASE + '/api/runsheet/food-choice', { method: 'POST', body: JSON.stringify({ plan_item_id: currentModalItem.id, choice_type: currentModalItem.food_choice.choice_type, selected: sel }) });
     await apiFetch(API_BASE + '/api/runsheet/item/' + currentModalItem.id + '/complete', { method: 'POST' });
-    showToast([...modalSelected].join(' + ') + ' — done ✓'); loadPlan();
+    showToast([...modalSelected].join(' + ') + ' \u2014 done ✓'); loadPlan();
   } catch (e) { showToast('Failed to save', true); }
 }
 
@@ -507,28 +508,6 @@ async function addItem() {
     await apiFetch(API_BASE + '/api/runsheet/edit', { method: 'POST', body: JSON.stringify([{ action: 'add', label, category: 'custom' }]) });
     input.value = ''; toggleAddBar(); showToast('Item added'); loadPlan();
   } catch (e) { showToast('Failed to add', true); }
-}
-
-// ---- Regenerate Plan ----
-
-async function regeneratePlan() {
-  if (!confirm('Regenerate today\u2019s plan? This will reset all items to the latest config.')) return;
-  const btn = document.getElementById('regenBtn');
-  btn.disabled = true;
-  btn.style.opacity = '0.4';
-  try {
-    const resp = await apiFetch(API_BASE + '/api/runsheet/regenerate', { method: 'POST' });
-    if (resp.status === 401) { showLogin(); return; }
-    if (!resp.ok) { showToast('Regenerate failed', true); return; }
-    const data = await resp.json();
-    showToast('Plan regenerated (' + data.item_count + ' items)');
-    loadPlan();
-  } catch (e) {
-    showToast('Regenerate failed', true);
-  } finally {
-    btn.disabled = false;
-    btn.style.opacity = '';
-  }
 }
 
 // ---- Toast ----

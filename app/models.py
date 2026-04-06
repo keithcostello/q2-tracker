@@ -117,7 +117,7 @@ class DailyPlan(Base):
     custom_edits: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=PlanStatus.ACTIVE.value)
 
-    items: Mapped[list["PlanItem"]] = relationship("PlanItem", back_populates="plan", cascade="all, delete-orphan")
+    items: Mapped[list["PlanItem"]] = relationship("PlanItem", back_populates="plan", cascade="all, delete-orphan", order_by="PlanItem.order")
 
 
 class PlanItem(Base):
