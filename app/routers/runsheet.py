@@ -77,7 +77,7 @@ def get_day_type(d: date) -> str:
     day_name = _WEEKDAY_NAMES[d.weekday()]
     template = SCHEDULE_CONFIG["day_templates"].get(day_name, {})
     title = template.get("title", day_name.capitalize())
-    return f"{day_name.capitalize()} — {title}"
+    return f"{day_name.capitalize()} \u2014 {title}"
 
 
 def get_day_items(d: date) -> list[dict]:
@@ -120,9 +120,9 @@ async def auto_generate_plan(d: date, db: AsyncSession) -> DailyPlan:
 
         # Enrich Dinner and Prep labels with tonight's meal info
         if label == "Dinner" and dinner_info:
-            label = f"Dinner — {dinner_info['name']}"
+            label = f"Dinner \u2014 {dinner_info['name']}"
         elif label == "Prep vegetables" and dinner_info:
-            label = f"Prep — {dinner_info.get('ingredients', 'vegetables')}"
+            label = f"Prep \u2014 {dinner_info.get('ingredients', 'vegetables')}"
 
         item = PlanItem(
             plan_id=plan.id,
@@ -266,7 +266,7 @@ async def complete_item(item_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Item not found")
 
     item.status = ItemStatus.DONE.value
-    item.completed_at = datetime.now(PACIFIC)
+    item.completed_at = datetime.now(PACIFIC).replace(tzinfo=None)
     await db.commit()
     await db.refresh(item)
     return {"id": item.id, "status": item.status, "completed_at": item.completed_at.isoformat()}
