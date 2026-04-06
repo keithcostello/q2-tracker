@@ -1,4 +1,4 @@
-const CACHE_NAME = 'runsheet-v7';
+const CACHE_NAME = 'runsheet-v8';
 const STATIC_ASSETS = [
   '/runsheet/',
   '/runsheet/index.html',
@@ -27,24 +27,19 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // Network-first for API calls
+  // API calls: network only, never serve stale cached responses
   if (url.pathname.startsWith('/api/')) {
-    e.respondWith(
-      fetch(e.request).catch(() =>
-        caches.match(e.request)
-      )
-    );
+    e.respondWith(fetch(e.request));
     return;
   }
 
-  // Cache-first for static assets
+  // Static assets: network-first so code deploys reach the browser,
+  // fall back to cache only when offline
   e.respondWith(
-    caches.match(e.request).then(cached =>
-      cached || fetch(e.request).then(resp => {
-        const clone = resp.clone();
-        caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
-        return resp;
-      })
-    )
+    fetch(e.request).then(resp => {
+      const clone = resp.clone();
+      caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+      return resp;
+    }).catch(() => caches.match(e.request))
   );
 });

@@ -5,6 +5,7 @@ let plan = null;
 const LONG_PRESS_MS = 500;
 let modalSelected = new Set();
 let currentModalItem = null;
+let _loadSeq = 0;  // race guard: only the latest loadPlan() renders
 
 const CATEGORY_ICONS = {
   gym: '💪', walk: '🚶', meal: '🍽️', prep: '🔪',
@@ -131,13 +132,16 @@ async function doLogin() {
 }
 
 async function loadPlan() {
+  const seq = ++_loadSeq;
   try {
     const resp = await apiFetch(API_BASE + '/api/runsheet/today');
+    if (seq !== _loadSeq) return false;  // a newer request is in flight — discard
     if (resp.status === 401) { showLogin(); return false; }
     plan = await resp.json();
     renderPlan();
     return true;
   } catch (e) {
+    if (seq !== _loadSeq) return false;
     document.getElementById('itemList').innerHTML =
       '<div class="loading">Could not load plan</div>';
     return false;
@@ -151,7 +155,13 @@ function renderPlan() {
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   document.getElementById('dayLabel').textContent = days[d.getDay()] + ' \u2014 ' + (plan.day_type || '');
 
-  const items = (plan.items || []).slice().sort((a, b) => a.order - b.order);
+  // Pending items first (by order), then done/skipped at the bottom (by order)
+  const items = (plan.items || []).slice().sort((a, b) => {
+    const aInactive = a.status !== 'pending' ? 1 : 0;
+    const bInactive = b.status !== 'pending' ? 1 : 0;
+    if (aInactive !== bInactive) return aInactive - bInactive;
+    return a.order - b.order;
+  });
   const done = items.filter(i => i.status === 'done').length;
   const total = items.length;
   const pct = total ? Math.round(done / total * 100) : 0;
