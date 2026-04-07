@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, Query, HTTPException, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -56,6 +56,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def no_cache_service_worker(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path == "/runsheet/sw.js":
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(BASE_DIR)
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
@@ -74,21 +85,6 @@ for _rpath in _runsheet_candidates:
         break
 
 if _runsheet_dir:
-    # Serve sw.js with no-cache headers so the browser always checks for updates.
-    # This route MUST be registered before the StaticFiles mount to take priority.
-    @app.get("/runsheet/sw.js")
-    async def runsheet_service_worker():
-        sw_path = os.path.join(_runsheet_dir, "sw.js")
-        return FileResponse(
-            sw_path,
-            media_type="application/javascript",
-            headers={
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0",
-            },
-        )
-
     app.mount("/runsheet", StaticFiles(directory=_runsheet_dir, html=True), name="runsheet")
     logger.info(f"Mounted /runsheet from {_runsheet_dir}")
 else:
