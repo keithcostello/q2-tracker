@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func, case, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db, init_db, engine, Base
@@ -353,6 +353,29 @@ async def health_summary(
 @app.get("/api/status")
 async def status():
     return {"status": "ok"}
+
+
+# --- TEMPORARY: One-time data wipe (remove after use) ---
+
+@app.post("/admin/wipe", dependencies=[Depends(verify_api_token)])
+async def wipe_all_data(db: AsyncSession = Depends(get_db)):
+    """Delete all rows from all tables in FK-safe order. Remove this endpoint after use."""
+    tables = [
+        "food_choices",
+        "plan_items",
+        "daily_plans",
+        "check_ins",
+        "defusion_logs",
+        "spending",
+        "apple_health",
+        "pantry",
+    ]
+    results = {}
+    for table in tables:
+        result = await db.execute(text(f"DELETE FROM {table}"))
+        results[table] = result.rowcount
+    await db.commit()
+    return {"wiped": True, "rows_deleted": results}
 
 
 # --- Register Routers ---
