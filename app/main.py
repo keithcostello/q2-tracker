@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, case, text
+from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db, init_db, engine, Base
@@ -353,24 +353,6 @@ async def health_summary(
 @app.get("/api/status")
 async def status():
     return {"status": "ok"}
-
-
-# --- TEMPORARY: One-time data wipe (remove after use) ---
-
-@app.post("/admin/wipe", dependencies=[Depends(verify_api_token)])
-async def wipe_all_data():
-    """Delete all rows from all tables using TRUNCATE CASCADE. Remove this endpoint after use."""
-    from app.database import engine
-    async with engine.begin() as conn:
-        await conn.execute(text(
-            "TRUNCATE TABLE food_choices, plan_items, daily_plans, "
-            "check_ins, defusion_logs, spending, apple_health, pantry CASCADE"
-        ))
-    return {"wiped": True, "tables_cleared": [
-        "food_choices", "plan_items", "daily_plans",
-        "check_ins", "defusion_logs", "spending",
-        "apple_health", "pantry",
-    ]}
 
 
 # --- Register Routers ---
