@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Runsheet">
   <title>Daily Runsheet</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260407">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 </head>
@@ -94,18 +94,6 @@
   <!-- Toast -->
   <div class="toast" id="toast"></div>
 
-  <!-- Force-reload when a new service worker activates.
-       This MUST be inline (not in app.js) because the old cached app.js
-       won't have it — that's exactly the problem we're solving. -->
-  <script>
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('controllerchange', function() {
-      // A new SW just took control — reload to get fresh assets
-      window.location.reload();
-    });
-  }
-  </script>
-
-  <script src="app.js"></script>
+  <script src="app.js?v=20260407"></script>
 </body>
 </html>

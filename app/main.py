@@ -58,9 +58,9 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def no_cache_service_worker(request: Request, call_next):
+async def no_cache_runsheet(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path == "/runsheet/sw.js":
+    if request.url.path.startswith("/runsheet/"):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
