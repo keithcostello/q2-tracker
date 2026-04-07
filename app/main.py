@@ -20,7 +20,7 @@ from app.models import (
     Spending, DefusionLog, CheckIn, AppleHealth,
     SpendingCategory, TriggerType, DefusionOutcome,
 )
-from app.auth import verify_api_token, require_session, verify_credentials, API_TOKEN
+from app.auth import verify_api_token, verify_write_token, require_session, verify_credentials, API_TOKEN
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,13 @@ PACIFIC = ZoneInfo("America/Los_Angeles")
 # --- Config ---
 
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me-in-production")
+
+ALLOWED_ORIGINS = [
+    "https://q2-tracker-production.up.railway.app",
+    "http://localhost:8000",
+    "http://localhost:3000",
+    "http://127.0.0.1:8000",
+]
 
 
 def current_week() -> tuple[date, date]:
@@ -50,7 +57,7 @@ app = FastAPI(title="Q2 Tracker", lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -174,9 +181,9 @@ async def dashboard_page(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request, "api_token": API_TOKEN})
 
 
-# --- Spending Endpoints (token-protected) ---
+# --- Spending Endpoints ---
 
-@app.post("/api/spending", response_model=SpendingOut, status_code=201, dependencies=[Depends(verify_api_token)])
+@app.post("/api/spending", response_model=SpendingOut, status_code=201, dependencies=[Depends(verify_write_token)])
 async def create_spending(data: SpendingIn, db: AsyncSession = Depends(get_db)):
     entry = Spending(amount=data.amount, category=data.category.value)
     db.add(entry)
@@ -224,9 +231,9 @@ async def spending_summary(
     return [{"category": row.category, "total": round(row.total, 2)} for row in result.all()]
 
 
-# --- Defusion Endpoints (token-protected) ---
+# --- Defusion Endpoints ---
 
-@app.post("/api/defusion", response_model=DefusionOut, status_code=201, dependencies=[Depends(verify_api_token)])
+@app.post("/api/defusion", response_model=DefusionOut, status_code=201, dependencies=[Depends(verify_write_token)])
 async def create_defusion(data: DefusionIn, db: AsyncSession = Depends(get_db)):
     entry = DefusionLog(
         trigger_type=data.trigger_type.value,
@@ -277,9 +284,9 @@ async def defusion_success_rate(db: AsyncSession = Depends(get_db)):
     ]
 
 
-# --- Check-In Endpoints (token-protected) ---
+# --- Check-In Endpoints ---
 
-@app.post("/api/checkin", response_model=CheckInOut, status_code=201, dependencies=[Depends(verify_api_token)])
+@app.post("/api/checkin", response_model=CheckInOut, status_code=201, dependencies=[Depends(verify_write_token)])
 async def create_checkin(data: CheckInIn, db: AsyncSession = Depends(get_db)):
     entry = CheckIn(energy=data.energy, mood=data.mood)
     db.add(entry)
@@ -306,9 +313,9 @@ async def get_checkins(
     return result.scalars().all()
 
 
-# --- Health Endpoints (token-protected) ---
+# --- Health Endpoints ---
 
-@app.post("/api/health", response_model=HealthOut, status_code=201, dependencies=[Depends(verify_api_token)])
+@app.post("/api/health", response_model=HealthOut, status_code=201, dependencies=[Depends(verify_write_token)])
 async def create_health(data: HealthIn, db: AsyncSession = Depends(get_db)):
     entry = AppleHealth(date=data.date, metric=data.metric, value=data.value)
     db.add(entry)
