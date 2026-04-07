@@ -358,24 +358,19 @@ async def status():
 # --- TEMPORARY: One-time data wipe (remove after use) ---
 
 @app.post("/admin/wipe", dependencies=[Depends(verify_api_token)])
-async def wipe_all_data(db: AsyncSession = Depends(get_db)):
-    """Delete all rows from all tables in FK-safe order. Remove this endpoint after use."""
-    tables = [
-        "food_choices",
-        "plan_items",
-        "daily_plans",
-        "check_ins",
-        "defusion_logs",
-        "spending",
-        "apple_health",
-        "pantry",
-    ]
-    deleted = []
-    for table in tables:
-        await db.execute(text(f"DELETE FROM {table}"))
-        deleted.append(table)
-    await db.commit()
-    return {"wiped": True, "tables_cleared": deleted}
+async def wipe_all_data():
+    """Delete all rows from all tables using TRUNCATE CASCADE. Remove this endpoint after use."""
+    from app.database import engine
+    async with engine.begin() as conn:
+        await conn.execute(text(
+            "TRUNCATE TABLE food_choices, plan_items, daily_plans, "
+            "check_ins, defusion_logs, spending, apple_health, pantry CASCADE"
+        ))
+    return {"wiped": True, "tables_cleared": [
+        "food_choices", "plan_items", "daily_plans",
+        "check_ins", "defusion_logs", "spending",
+        "apple_health", "pantry",
+    ]}
 
 
 # --- Register Routers ---
