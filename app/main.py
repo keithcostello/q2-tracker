@@ -370,12 +370,12 @@ async def wipe_all_data(db: AsyncSession = Depends(get_db)):
         "apple_health",
         "pantry",
     ]
-    results = {}
+    deleted = []
     for table in tables:
-        result = await db.execute(text(f"DELETE FROM {table}"))
-        results[table] = result.rowcount
+        await db.execute(text(f"DELETE FROM {table}"))
+        deleted.append(table)
     await db.commit()
-    return {"wiped": True, "rows_deleted": results}
+    return {"wiped": True, "tables_cleared": deleted}
 
 
 # --- Register Routers ---
