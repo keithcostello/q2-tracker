@@ -32,7 +32,11 @@ function apiFetch(url, init = {}) {
 }
 
 async function init() {
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Unregister any leftover service workers
+  if ('serviceWorker' in navigator) {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    for (const r of regs) r.unregister();
+  }
 
   // Handle browser back button: close open modals instead of navigating away
   window.addEventListener('popstate', () => {
