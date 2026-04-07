@@ -81,7 +81,7 @@ async def test_post_defusion(client):
     assert data["trigger_type"] == "Smell"
     assert data["intensity"] == 4
     assert data["outcome"] == "stayed"
-    assert data["duration_seconds"] == 120
+    assert data["duration_seconds"] == 10
 
 
 @pytest.mark.asyncio
@@ -185,7 +185,7 @@ async def test_health_trend(client):
     await client.post("/api/health", json={"date": "2026-04-02", "metric": "steps", "value": 9000}, headers=AUTH)
     await client.post("/api/health", json={"date": "2026-04-01", "metric": "sleep_hours", "value": 7.5}, headers=AUTH)
 
-    resp = await client.get("/api/health/trend?metric=steps", headers=AUTH)
+    resp = await client.get("/api/health/trend?metric=steps&start=2026-04-01&end=2026-04-02", headers=AUTH)
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 2
@@ -214,4 +214,4 @@ async def test_status(client):
     resp = await client.get("/api/status")
     assert resp.status_code == 200
     data = resp.json()
-    a
+    assert data["status"] == "ok"

@@ -170,17 +170,7 @@ const API = '';
 const API_TOKEN = '{{ api_token }}';
 const AUTH_HEADERS = {'Authorization': 'Bearer ' + API_TOKEN, 'Content-Type': 'application/json'};
 
-// Register service worker and pass token
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/static/sw.js').then(reg => {
-    if (reg.active) reg.active.postMessage({type: 'SET_TOKEN', token: API_TOKEN});
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({type: 'SET_TOKEN', token: API_TOKEN});
-      }
-    });
-  });
-}
+// No service worker — removed during active dev to prevent caching issues
 
 // ===== TABS =====
 document.querySelectorAll('.tab-btn').forEach(btn => {

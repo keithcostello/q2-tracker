@@ -107,7 +107,7 @@ class DefusionIn(BaseModel):
     trigger_type: TriggerType
     intensity: int = Field(ge=1, le=5)
     outcome: DefusionOutcome
-    duration_seconds: int = 120
+    duration_seconds: int = 10
 
 class DefusionOut(BaseModel):
     id: int

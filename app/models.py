@@ -54,7 +54,7 @@ class DefusionLog(Base):
     trigger_type: Mapped[str] = mapped_column(String(20), nullable=False)
     intensity: Mapped[int] = mapped_column(Integer, nullable=False)
     outcome: Mapped[str] = mapped_column(String(10), nullable=False)
-    duration_seconds: Mapped[int] = mapped_column(Integer, default=120)
+    duration_seconds: Mapped[int] = mapped_column(Integer, default=10)
 
 
 class CheckIn(Base):
