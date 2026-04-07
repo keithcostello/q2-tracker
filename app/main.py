@@ -359,6 +359,8 @@ async def status():
 
 from app.routers.runsheet import router as runsheet_router
 from app.routers.pantry import router as pantry_router
+from app.routers.snapshot import router as snapshot_router
 
 app.include_router(runsheet_router)
 app.include_router(pantry_router)
+app.include_router(snapshot_router)
