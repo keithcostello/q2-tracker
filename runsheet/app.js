@@ -417,22 +417,64 @@ async function loadFoodOptions(item, ct, grid, isMulti) {
 
 async function selectFoodChoice(item, ct, selected) {
   try {
-    await apiFetch(API_BASE + '/api/runsheet/food-choice', { method: 'POST', body: JSON.stringify({ plan_item_id: item.id, choice_type: ct, selected }) });
-    await apiFetch(API_BASE + '/api/runsheet/item/' + item.id + '/complete', { method: 'POST' });
+    const fcResp = await apiFetch(API_BASE + '/api/runsheet/food-choice', {
+      method: 'POST',
+      body: JSON.stringify({ plan_item_id: item.id, choice_type: ct, selected: selected })
+    });
+    if (!fcResp.ok) {
+      const detail = await fcResp.text().catch(() => '');
+      console.error('food-choice failed:', fcResp.status, detail);
+      closeFoodModal(true);
+      showToast('Save failed (' + fcResp.status + ')', true);
+      return;
+    }
+    const compResp = await apiFetch(API_BASE + '/api/runsheet/item/' + item.id + '/complete', { method: 'POST' });
+    if (!compResp.ok) {
+      const detail = await compResp.text().catch(() => '');
+      console.error('complete failed:', compResp.status, detail);
+      closeFoodModal(true);
+      showToast('Complete failed (' + compResp.status + ')', true);
+      return;
+    }
     closeFoodModal(true);
-    showToast(selected + ' \u2014 done ✓'); loadPlan();
-  } catch (e) { closeFoodModal(true); showToast('Failed to save', true); }
+    showToast(selected + ' \u2014 done \u2713'); loadPlan();
+  } catch (e) {
+    console.error('selectFoodChoice error:', e.message, e.stack);
+    closeFoodModal(true);
+    showToast('Network error: ' + (e.message || 'unknown'), true);
+  }
 }
 
 async function confirmMultiSelect() {
   if (!modalSelected.size || !currentModalItem) return;
   const sel = [...modalSelected].join(', ');
   try {
-    await apiFetch(API_BASE + '/api/runsheet/food-choice', { method: 'POST', body: JSON.stringify({ plan_item_id: currentModalItem.id, choice_type: currentModalItem.food_choice.choice_type, selected: sel }) });
-    await apiFetch(API_BASE + '/api/runsheet/item/' + currentModalItem.id + '/complete', { method: 'POST' });
+    const fcResp = await apiFetch(API_BASE + '/api/runsheet/food-choice', {
+      method: 'POST',
+      body: JSON.stringify({ plan_item_id: currentModalItem.id, choice_type: currentModalItem.food_choice.choice_type, selected: sel })
+    });
+    if (!fcResp.ok) {
+      const detail = await fcResp.text().catch(() => '');
+      console.error('food-choice failed:', fcResp.status, detail);
+      closeFoodModal(true);
+      showToast('Save failed (' + fcResp.status + ')', true);
+      return;
+    }
+    const compResp = await apiFetch(API_BASE + '/api/runsheet/item/' + currentModalItem.id + '/complete', { method: 'POST' });
+    if (!compResp.ok) {
+      const detail = await compResp.text().catch(() => '');
+      console.error('complete failed:', compResp.status, detail);
+      closeFoodModal(true);
+      showToast('Complete failed (' + compResp.status + ')', true);
+      return;
+    }
     closeFoodModal(true);
-    showToast([...modalSelected].join(' + ') + ' \u2014 done ✓'); loadPlan();
-  } catch (e) { closeFoodModal(true); showToast('Failed to save', true); }
+    showToast([...modalSelected].join(' + ') + ' \u2014 done \u2713'); loadPlan();
+  } catch (e) {
+    console.error('confirmMultiSelect error:', e.message, e.stack);
+    closeFoodModal(true);
+    showToast('Network error: ' + (e.message || 'unknown'), true);
+  }
 }
 
 // popBack: true when the user explicitly closed it (need to pop history state)
