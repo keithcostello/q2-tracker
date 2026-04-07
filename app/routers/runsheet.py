@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.auth import verify_api_token
+from app.auth import verify_api_token, verify_write_token
 from app.models import (
     DailyPlan, PlanItem, FoodChoice,
     PlanStatus, ItemStatus, ItemCategory, ChoiceType,
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 PACIFIC = ZoneInfo("America/Los_Angeles")
 
-router = APIRouter(prefix="/api/runsheet", dependencies=[Depends(verify_api_token)])
+router = APIRouter(prefix="/api/runsheet")
 
 
 # --- Load Schedule Config from JSON ---
@@ -35,11 +35,8 @@ router = APIRouter(prefix="/api/runsheet", dependencies=[Depends(verify_api_toke
 def _find_config() -> str:
     """Try multiple paths to find schedule_config.json."""
     candidates = [
-        # Path relative to this file: app/routers/ -> app/ -> repo root
         os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "schedule_config.json"),
-        # Path relative to cwd (Railway typically runs from repo root)
         os.path.join(os.getcwd(), "schedule_config.json"),
-        # Absolute fallback for nixpacks
         "/app/schedule_config.json",
     ]
     for path in candidates:
@@ -62,21 +59,15 @@ with open(_CONFIG_PATH, "r") as _f:
 
 SYSTEM_START_DATE = date.fromisoformat(SCHEDULE_CONFIG["meta"]["system_start_date"])
 
-# Map weekday index (0=Mon) to JSON key
 _WEEKDAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 
 def get_week_number(d: date) -> int:
-    """Return 1 or 2 for two-week rotation, anchored to system start date (2026-03-16).
-
-    Weeks 0, 2, 4… from start = Week 1.  Weeks 1, 3, 5… = Week 2.
-    """
     days_since_start = (d - SYSTEM_START_DATE).days
     return 1 if (days_since_start // 7) % 2 == 0 else 2
 
 
 def get_day_type(d: date) -> str:
-    """Get a human-readable day type string from schedule_config.json."""
     day_name = _WEEKDAY_NAMES[d.weekday()]
     template = SCHEDULE_CONFIG["day_templates"].get(day_name, {})
     title = template.get("title", day_name.capitalize())
@@ -84,24 +75,18 @@ def get_day_type(d: date) -> str:
 
 
 def get_day_items(d: date) -> list[dict]:
-    """Return the ordered item list for a given date from schedule_config.json."""
     day_name = _WEEKDAY_NAMES[d.weekday()]
     template = SCHEDULE_CONFIG["day_templates"].get(day_name, {})
     return template.get("items", [])
 
 
 def get_dinner_info(d: date) -> dict:
-    """Look up tonight's dinner from dinner_rotation based on date and week number.
-
-    Returns dict with 'name', 'calories', 'ingredients' or empty dict if not found.
-    """
     day_name = _WEEKDAY_NAMES[d.weekday()]
     week_key = f"week_{get_week_number(d)}"
     return SCHEDULE_CONFIG.get("dinner_rotation", {}).get(week_key, {}).get(day_name, {})
 
 
 async def auto_generate_plan(d: date, db: AsyncSession) -> DailyPlan:
-    """Generate a daily plan from schedule_config.json for the given date."""
     day_type = get_day_type(d)
     week_number = get_week_number(d)
 
@@ -114,14 +99,12 @@ async def auto_generate_plan(d: date, db: AsyncSession) -> DailyPlan:
     db.add(plan)
     await db.flush()
 
-    # Look up tonight's dinner for dynamic labels
     dinner_info = get_dinner_info(d)
 
     items_template = get_day_items(d)
     for cfg_item in items_template:
         label = cfg_item["label"]
 
-        # Enrich Dinner and Prep labels with tonight's meal info
         if label == "Dinner" and dinner_info:
             label = f"Dinner \u2014 {dinner_info['name']}"
         elif label == "Prep vegetables" and dinner_info:
@@ -135,9 +118,8 @@ async def auto_generate_plan(d: date, db: AsyncSession) -> DailyPlan:
             status=ItemStatus.PENDING.value,
         )
         db.add(item)
-        await db.flush()  # Need the item.id for FoodChoice
+        await db.flush()
 
-        # Create FoodChoice if this item has a food_choice_type
         if "food_choice_type" in cfg_item:
             choice = FoodChoice(
                 plan_item_id=item.id,
@@ -151,7 +133,6 @@ async def auto_generate_plan(d: date, db: AsyncSession) -> DailyPlan:
 
     await db.commit()
 
-    # Reload with relationships
     result = await db.execute(
         select(DailyPlan)
         .options(selectinload(DailyPlan.items).selectinload(PlanItem.food_choice))
@@ -194,7 +175,7 @@ class DailyPlanOut(BaseModel):
 
 
 class EditAction(BaseModel):
-    action: str  # "add", "delete", "reorder"
+    action: str
     item_id: Optional[int] = None
     label: Optional[str] = None
     category: Optional[str] = None
@@ -208,9 +189,9 @@ class FoodChoiceIn(BaseModel):
     options: Optional[dict] = None
 
 
-# --- Endpoints ---
+# --- Read Endpoints (accept read or write token) ---
 
-@router.get("/today", response_model=DailyPlanOut)
+@router.get("/today", response_model=DailyPlanOut, dependencies=[Depends(verify_api_token)])
 async def get_today(db: AsyncSession = Depends(get_db)):
     """Return today's plan. Auto-generate if none exists."""
     today = datetime.now(PACIFIC).date()
@@ -227,13 +208,11 @@ async def get_today(db: AsyncSession = Depends(get_db)):
     return plan
 
 
-@router.post("/regenerate")
-async def regenerate_plan(db: AsyncSession = Depends(get_db)):
-    """Delete today's plan and regenerate it from schedule_config.json.
+# --- Write Endpoints (require write token) ---
 
-    Useful after config changes are deployed so the plan picks up
-    new labels, dinner info, split items, etc.
-    """
+@router.post("/regenerate", dependencies=[Depends(verify_write_token)])
+async def regenerate_plan(db: AsyncSession = Depends(get_db)):
+    """Delete today's plan and regenerate it from schedule_config.json."""
     today = datetime.now(PACIFIC).date()
     result = await db.execute(
         select(DailyPlan)
@@ -243,7 +222,6 @@ async def regenerate_plan(db: AsyncSession = Depends(get_db)):
     old_plan = result.scalar_one_or_none()
 
     if old_plan is not None:
-        # Delete all food choices, then items, then the plan itself
         for item in old_plan.items:
             if item.food_choice:
                 await db.delete(item.food_choice)
@@ -260,7 +238,7 @@ async def regenerate_plan(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.post("/item/{item_id}/complete")
+@router.post("/item/{item_id}/complete", dependencies=[Depends(verify_write_token)])
 async def complete_item(item_id: int, db: AsyncSession = Depends(get_db)):
     """Mark a plan item as done."""
     try:
@@ -282,7 +260,7 @@ async def complete_item(item_id: int, db: AsyncSession = Depends(get_db)):
         return JSONResponse(status_code=500, content={"detail": str(e), "traceback": traceback.format_exc()})
 
 
-@router.post("/item/{item_id}/skip")
+@router.post("/item/{item_id}/skip", dependencies=[Depends(verify_write_token)])
 async def skip_item(item_id: int, db: AsyncSession = Depends(get_db)):
     """Mark a plan item as skipped."""
     result = await db.execute(select(PlanItem).where(PlanItem.id == item_id))
@@ -296,7 +274,7 @@ async def skip_item(item_id: int, db: AsyncSession = Depends(get_db)):
     return {"id": item.id, "status": item.status}
 
 
-@router.post("/item/{item_id}/reset")
+@router.post("/item/{item_id}/reset", dependencies=[Depends(verify_write_token)])
 async def reset_item(item_id: int, db: AsyncSession = Depends(get_db)):
     """Reset a done or skipped item back to pending."""
     result = await db.execute(select(PlanItem).where(PlanItem.id == item_id))
@@ -311,7 +289,7 @@ async def reset_item(item_id: int, db: AsyncSession = Depends(get_db)):
     return {"id": item.id, "status": item.status}
 
 
-@router.post("/edit")
+@router.post("/edit", dependencies=[Depends(verify_write_token)])
 async def edit_plan(edits: list[EditAction], db: AsyncSession = Depends(get_db)):
     """Add, delete, or reorder items in today's plan."""
     today = datetime.now(PACIFIC).date()
@@ -368,7 +346,6 @@ async def edit_plan(edits: list[EditAction], db: AsyncSession = Depends(get_db))
         else:
             raise HTTPException(status_code=422, detail=f"Unknown action: {edit.action}")
 
-    # Store edits in custom_edits JSON
     existing_edits = plan.custom_edits or {"additions": [], "deletions": [], "reorders": []}
     for edit in edits:
         if edit.action == "add":
@@ -383,33 +360,26 @@ async def edit_plan(edits: list[EditAction], db: AsyncSession = Depends(get_db))
     return {"edits": results}
 
 
-@router.post("/food-choice", status_code=201)
+@router.post("/food-choice", status_code=201, dependencies=[Depends(verify_write_token)])
 async def record_food_choice(data: FoodChoiceIn, db: AsyncSession = Depends(get_db)):
-    """Record a food selection for a plan item.
-
-    If a FoodChoice already exists for this plan item (e.g. auto-generated),
-    update it in place rather than creating a duplicate.
-    """
+    """Record a food selection for a plan item."""
     result = await db.execute(select(PlanItem).where(PlanItem.id == data.plan_item_id))
     item = result.scalar_one_or_none()
     if item is None:
         raise HTTPException(status_code=404, detail="Plan item not found")
 
-    # Check for existing FoodChoice (auto-generated plans create one with selected=None)
     existing_result = await db.execute(
         select(FoodChoice).where(FoodChoice.plan_item_id == data.plan_item_id)
     )
     existing_choice = existing_result.scalar_one_or_none()
 
     if existing_choice is not None:
-        # Update existing choice
         existing_choice.choice_type = data.choice_type.value
         existing_choice.selected = data.selected
         if data.options is not None:
             existing_choice.options = data.options
         choice = existing_choice
     else:
-        # Create new choice
         choice = FoodChoice(
             plan_item_id=data.plan_item_id,
             choice_type=data.choice_type.value,

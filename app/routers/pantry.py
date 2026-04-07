@@ -12,19 +12,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.auth import verify_api_token
+from app.auth import verify_api_token, verify_write_token
 from app.models import Pantry, now_pacific
 
 PACIFIC = ZoneInfo("America/Los_Angeles")
 
-router = APIRouter(prefix="/api/pantry", dependencies=[Depends(verify_api_token)])
+router = APIRouter(prefix="/api/pantry")
 
 
 # --- Load Schedule Config from JSON ---
 
-_ROUTER_DIR = os.path.dirname(os.path.abspath(__file__))       # app/routers/
-_APP_DIR = os.path.dirname(_ROUTER_DIR)                        # app/
-_PROJECT_DIR = os.path.dirname(_APP_DIR)                       # q2-tracker-backend/
+_ROUTER_DIR = os.path.dirname(os.path.abspath(__file__))
+_APP_DIR = os.path.dirname(_ROUTER_DIR)
+_PROJECT_DIR = os.path.dirname(_APP_DIR)
 _CONFIG_PATH = os.path.join(_PROJECT_DIR, "schedule_config.json")
 
 with open(_CONFIG_PATH, "r") as _f:
@@ -42,17 +42,17 @@ class PantryItemOut(BaseModel):
 
 
 class PantryBulkUpdate(BaseModel):
-    items: list[dict]  # [{"name": "apples", "currently_stocked": true}, ...]
+    items: list[dict]
 
 
 class PantrySeededResponse(BaseModel):
     created_count: int
-    items: list[dict]  # [{"name": "apples", "category": "fruit"}, ...]
+    items: list[dict]
 
 
-# --- Endpoints ---
+# --- Read Endpoints (accept read or write token) ---
 
-@router.get("", response_model=list[PantryItemOut])
+@router.get("", response_model=list[PantryItemOut], dependencies=[Depends(verify_api_token)])
 async def list_pantry(
     category: Optional[str] = None,
     stocked_only: bool = False,
@@ -69,29 +69,18 @@ async def list_pantry(
     return result.scalars().all()
 
 
-@router.post("/seed", response_model=PantrySeededResponse)
+# --- Write Endpoints (require write token) ---
+
+@router.post("/seed", response_model=PantrySeededResponse, dependencies=[Depends(verify_write_token)])
 async def seed_pantry(db: AsyncSession = Depends(get_db)):
-    """Seed the pantry table from food_choice_options in schedule_config.json.
-
-    - Reads all 5 food choice lists: oatmeal_fruits, veggie_bowl_vegetables, snack_vegetables, snack_fruits, pre_workout_fruits
-    - Deduplicates items across all lists
-    - Categorizes each as \"fruit\" or \"vegetable\" based on which list(s) it appears in
-    - Creates Pantry records for each unique item (skips if already exists)
-    - Sets currently_stocked to False (user updates after shopping)
-
-    Returns: count of items created and list of all items (including duplicates)
-    """
+    """Seed the pantry table from food_choice_options in schedule_config.json."""
     food_choice_options = SCHEDULE_CONFIG.get("food_choice_options", {})
 
-    # Fruit lists
     fruit_lists = ["oatmeal_fruits", "snack_fruits", "pre_workout_fruits"]
-    # Vegetable lists
     veg_lists = ["veggie_bowl_vegetables", "snack_vegetables"]
 
-    # Track items by category: normalize names and deduplicate within each category
-    items_dict = {}  # {normalized_name: {"name": original_name, "category": "fruit"|"vegetable"}}
+    items_dict = {}
 
-    # Process fruit lists
     for list_key in fruit_lists:
         list_data = food_choice_options.get(list_key, {})
         master_list = list_data.get("master_list", [])
@@ -100,7 +89,6 @@ async def seed_pantry(db: AsyncSession = Depends(get_db)):
             if normalized not in items_dict:
                 items_dict[normalized] = {"name": item, "category": "fruit"}
 
-    # Process vegetable lists
     for list_key in veg_lists:
         list_data = food_choice_options.get(list_key, {})
         master_list = list_data.get("master_list", [])
@@ -109,18 +97,15 @@ async def seed_pantry(db: AsyncSession = Depends(get_db)):
             if normalized not in items_dict:
                 items_dict[normalized] = {"name": item, "category": "vegetable"}
 
-    # Now insert into database, skipping duplicates
     created_items = []
     for normalized_name, item_info in items_dict.items():
         original_name = item_info["name"]
         category = item_info["category"]
 
-        # Check if item already exists
         result = await db.execute(select(Pantry).where(Pantry.name == original_name))
         existing = result.scalar_one_or_none()
 
         if existing is None:
-            # Create new pantry item
             pantry_item = Pantry(
                 name=original_name,
                 category=category,
@@ -138,7 +123,7 @@ async def seed_pantry(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.put("")
+@router.put("", dependencies=[Depends(verify_write_token)])
 async def update_pantry(data: PantryBulkUpdate, db: AsyncSession = Depends(get_db)):
     """Bulk update stocked items (after shopping)."""
     updated = []
@@ -151,7 +136,6 @@ async def update_pantry(data: PantryBulkUpdate, db: AsyncSession = Depends(get_d
         pantry_item = result.scalar_one_or_none()
 
         if pantry_item is None:
-            # Create new pantry item
             pantry_item = Pantry(
                 name=name,
                 category=item_data.get("category", "fruit"),
@@ -160,7 +144,6 @@ async def update_pantry(data: PantryBulkUpdate, db: AsyncSession = Depends(get_d
             )
             db.add(pantry_item)
         else:
-            # Update existing
             if "currently_stocked" in item_data:
                 pantry_item.currently_stocked = item_data["currently_stocked"]
             if "category" in item_data:
