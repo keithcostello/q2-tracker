@@ -9,7 +9,12 @@ PACIFIC = ZoneInfo("America/Los_Angeles")
 
 
 def now_pacific() -> datetime:
-    return datetime.now(PACIFIC)
+    """Return current time in Pacific, as a naive datetime (no tzinfo).
+
+    All DateTime columns in this project use TIMESTAMP WITHOUT TIME ZONE.
+    asyncpg rejects tz-aware datetimes for these columns, so we must strip tzinfo.
+    """
+    return datetime.now(PACIFIC).replace(tzinfo=None)
 
 
 class SpendingCategory(str, enum.Enum):

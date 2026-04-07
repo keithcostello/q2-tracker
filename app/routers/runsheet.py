@@ -20,6 +20,7 @@ from app.auth import verify_api_token
 from app.models import (
     DailyPlan, PlanItem, FoodChoice,
     PlanStatus, ItemStatus, ItemCategory, ChoiceType,
+    now_pacific,
 )
 
 logger = logging.getLogger(__name__)
@@ -269,7 +270,7 @@ async def complete_item(item_id: int, db: AsyncSession = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Item not found")
 
         item.status = ItemStatus.DONE.value
-        item.completed_at = datetime.now(PACIFIC).replace(tzinfo=None)
+        item.completed_at = now_pacific()
         await db.commit()
         await db.refresh(item)
         return {"id": item.id, "status": item.status, "completed_at": item.completed_at.isoformat()}

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.auth import verify_api_token
-from app.models import Pantry
+from app.models import Pantry, now_pacific
 
 PACIFIC = ZoneInfo("America/Los_Angeles")
 
@@ -125,7 +125,7 @@ async def seed_pantry(db: AsyncSession = Depends(get_db)):
                 name=original_name,
                 category=category,
                 currently_stocked=False,
-                last_updated=datetime.now(PACIFIC),
+                last_updated=now_pacific(),
             )
             db.add(pantry_item)
             created_items.append({"name": original_name, "category": category})
@@ -156,7 +156,7 @@ async def update_pantry(data: PantryBulkUpdate, db: AsyncSession = Depends(get_d
                 name=name,
                 category=item_data.get("category", "fruit"),
                 currently_stocked=item_data.get("currently_stocked", True),
-                last_updated=datetime.now(PACIFIC),
+                last_updated=now_pacific(),
             )
             db.add(pantry_item)
         else:
@@ -165,7 +165,7 @@ async def update_pantry(data: PantryBulkUpdate, db: AsyncSession = Depends(get_d
                 pantry_item.currently_stocked = item_data["currently_stocked"]
             if "category" in item_data:
                 pantry_item.category = item_data["category"]
-            pantry_item.last_updated = datetime.now(PACIFIC)
+            pantry_item.last_updated = now_pacific()
 
         updated.append(name)
 
