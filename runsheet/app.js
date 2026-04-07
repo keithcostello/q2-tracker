@@ -1,5 +1,6 @@
-/* Daily Runsheet - App Logic */
+/* Daily Runsheet - App Logic  v2026-04-07a */
 
+const APP_VERSION = '2026-04-07a';
 const API_BASE = window.location.origin;
 let plan = null;
 const LONG_PRESS_MS = 500;
@@ -20,7 +21,7 @@ const CHOICE_CAT_MAP = {
   snack_fruit:      ['fruit'],
   preworkout_fruit: ['fruit'],
   veggie_bowl_veg:  ['vegetable'],
-  snack_veg:        ['vegetable', 'fruit'],  // snacks: show all stocked options
+  snack_veg:        ['vegetable', 'fruit'],
 };
 
 function apiFetch(url, init = {}) {
@@ -37,6 +38,9 @@ async function init() {
     const regs = await navigator.serviceWorker.getRegistrations();
     for (const r of regs) r.unregister();
   }
+
+  // Show version in header for debugging
+  console.log('Runsheet version:', APP_VERSION);
 
   // Handle browser back button: close open modals instead of navigating away
   window.addEventListener('popstate', () => {
@@ -78,7 +82,7 @@ async function init() {
   });
   buildScales();
 
-  // Check existing session — handles back-nav from pantry without re-login
+  // Check existing session
   try {
     const resp = await apiFetch(API_BASE + '/api/runsheet/today');
     if (resp.status === 200) {
@@ -100,6 +104,9 @@ function showLogin() {
 function showApp() {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
+  // Show version stamp
+  const vEl = document.getElementById('versionStamp');
+  if (vEl) vEl.textContent = 'v' + APP_VERSION;
 }
 
 async function doLogin() {
@@ -139,7 +146,7 @@ async function loadPlan() {
   const seq = ++_loadSeq;
   try {
     const resp = await apiFetch(API_BASE + '/api/runsheet/today');
-    if (seq !== _loadSeq) return false;  // a newer request is in flight — discard
+    if (seq !== _loadSeq) return false;
     if (resp.status === 401) { showLogin(); return false; }
     plan = await resp.json();
     renderPlan();
@@ -159,7 +166,6 @@ function renderPlan() {
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   document.getElementById('dayLabel').textContent = days[d.getDay()] + ' \u2014 ' + (plan.day_type || '');
 
-  // Pending items first (by order), then done/skipped at the bottom (by order)
   const items = (plan.items || []).slice().sort((a, b) => {
     const aInactive = a.status !== 'pending' ? 1 : 0;
     const bInactive = b.status !== 'pending' ? 1 : 0;
@@ -178,7 +184,6 @@ function renderPlan() {
   const list = document.getElementById('itemList');
   list.innerHTML = '';
 
-  // Indices of pending items only (for up/down boundary checks)
   const pendingIds = items.filter(i => i.status === 'pending').map(i => i.id);
 
   items.forEach((item, idx) => {
@@ -241,7 +246,6 @@ function renderPlan() {
     } else if (item.status === 'done' || item.status === 'skipped') {
       card.style.cursor = 'pointer';
       card.addEventListener('click', () => {
-        // Done food items: reopen the choice modal to change selections
         if (item.status === 'done' && item.food_choice && item.food_choice.choice_type) {
           reopenFoodModal(item);
         } else {
@@ -264,27 +268,15 @@ function renderPlan() {
 // ---- Up/Down reorder ----
 
 async function moveItem(itemId, direction, sortedItems) {
-  // Only move among pending items
   const pending = sortedItems.filter(i => i.status === 'pending');
   const pIdx = pending.findIndex(i => i.id === itemId);
   if (pIdx < 0) return;
   const newPIdx = pIdx + direction;
   if (newPIdx < 0 || newPIdx >= pending.length) return;
 
-  // Swap in the pending sub-list, keeping done/skipped items in place
   const swapped = [...pending];
   [swapped[pIdx], swapped[newPIdx]] = [swapped[newPIdx], swapped[pIdx]];
 
-  // Rebuild full order: done+skipped items keep their original order values;
-  // pending items get new order values interleaved by their original positions
-  const doneItems = sortedItems.filter(i => i.status !== 'pending');
-  // Assign order to pending items sequentially among the combined list
-  // Simpler: just send the new pending order; backend assigns positions by array index
-  const newOrder = sortedItems.map(i => {
-    if (i.status !== 'pending') return i.id;
-    return null; // placeholder
-  });
-  // Replace placeholders with swapped pending IDs in order
   let pCursor = 0;
   const finalOrder = sortedItems.map(i => {
     if (i.status !== 'pending') return i.id;
@@ -315,34 +307,50 @@ function handleItemTap(item) {
 async function completeItem(itemId) {
   try {
     const resp = await apiFetch(API_BASE + '/api/runsheet/item/' + itemId + '/complete', { method: 'POST' });
-    if (!resp.ok) { showToast('Failed to update', true); return; }
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '');
+      showToast('Complete err ' + resp.status + ': ' + detail.substring(0, 80), true);
+      return;
+    }
     showToast('Done ✓'); loadPlan();
-  } catch (e) { showToast('Failed to update', true); }
+  } catch (e) {
+    showToast('Complete net err: ' + (e.message || 'unknown'), true);
+  }
 }
 
 async function skipItem(itemId) {
   try {
     const resp = await apiFetch(API_BASE + '/api/runsheet/item/' + itemId + '/skip', { method: 'POST' });
-    if (!resp.ok) { showToast('Failed to update', true); return; }
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '');
+      showToast('Skip err ' + resp.status + ': ' + detail.substring(0, 80), true);
+      return;
+    }
     showToast('Skipped'); loadPlan();
-  } catch (e) { showToast('Failed to update', true); }
+  } catch (e) {
+    showToast('Skip net err: ' + (e.message || 'unknown'), true);
+  }
 }
 
 async function resetItem(itemId) {
   try {
-    await apiFetch(API_BASE + '/api/runsheet/item/' + itemId + '/reset', { method: 'POST' });
+    const resp = await apiFetch(API_BASE + '/api/runsheet/item/' + itemId + '/reset', { method: 'POST' });
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '');
+      showToast('Reset err ' + resp.status + ': ' + detail.substring(0, 80), true);
+      return;
+    }
     showToast('Reopened'); loadPlan();
-  } catch (e) { showToast('Failed to update', true); }
+  } catch (e) {
+    showToast('Reset net err: ' + (e.message || 'unknown'), true);
+  }
 }
 
 // ---- Food Choice Modal ----
 
-// Reopen food modal for a done item — pre-populate with existing selections
 function reopenFoodModal(item) {
-  // Reset to pending first so saving re-completes it cleanly
   apiFetch(API_BASE + '/api/runsheet/item/' + item.id + '/reset', { method: 'POST' })
     .then(() => {
-      // Reload plan data so item reflects pending, then open modal with pre-selections
       return apiFetch(API_BASE + '/api/runsheet/today').then(r => r.json());
     })
     .then(freshPlan => {
@@ -355,7 +363,6 @@ function reopenFoodModal(item) {
 
 function openFoodModal(item, preSelected) {
   currentModalItem = item;
-  // Pre-populate multi-select from existing comma-separated string
   modalSelected = preSelected
     ? new Set(preSelected.split(',').map(s => s.trim()).filter(Boolean))
     : new Set();
@@ -375,7 +382,6 @@ function openFoodModal(item, preSelected) {
   confirmBtn.classList.toggle('hidden', !isMulti);
   confirmBtn.disabled = modalSelected.size === 0;
   loadFoodOptions(item, ct, document.getElementById('foodChoiceGrid'), isMulti);
-  // Push state so browser back button closes this modal instead of navigating away
   history.pushState({ modal: 'food' }, '');
   document.getElementById('foodModal').classList.add('open');
 }
@@ -401,7 +407,6 @@ async function loadFoodOptions(item, ct, grid, isMulti) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'choice-btn'; btn.textContent = pi.name;
-      // Highlight pre-existing selections
       if (modalSelected.has(pi.name)) btn.classList.add('selected');
       if (isMulti) {
         btn.addEventListener('click', () => {
@@ -427,25 +432,22 @@ async function selectFoodChoice(item, ct, selected) {
     });
     if (!fcResp.ok) {
       const detail = await fcResp.text().catch(() => '');
-      console.error('food-choice failed:', fcResp.status, detail);
       closeFoodModal(true);
-      showToast('Save failed (' + fcResp.status + ')', true);
+      showToast('Food err ' + fcResp.status + ': ' + detail.substring(0, 80), true);
       return;
     }
     const compResp = await apiFetch(API_BASE + '/api/runsheet/item/' + item.id + '/complete', { method: 'POST' });
     if (!compResp.ok) {
       const detail = await compResp.text().catch(() => '');
-      console.error('complete failed:', compResp.status, detail);
       closeFoodModal(true);
-      showToast('Complete failed (' + compResp.status + ')', true);
+      showToast('Done err ' + compResp.status + ': ' + detail.substring(0, 80), true);
       return;
     }
     closeFoodModal(true);
     showToast(selected + ' \u2014 done \u2713'); loadPlan();
   } catch (e) {
-    console.error('selectFoodChoice error:', e.message, e.stack);
     closeFoodModal(true);
-    showToast('Network error: ' + (e.message || 'unknown'), true);
+    showToast('Net err: ' + (e.message || 'unknown'), true);
   }
 }
 
@@ -459,30 +461,25 @@ async function confirmMultiSelect() {
     });
     if (!fcResp.ok) {
       const detail = await fcResp.text().catch(() => '');
-      console.error('food-choice failed:', fcResp.status, detail);
       closeFoodModal(true);
-      showToast('Save failed (' + fcResp.status + ')', true);
+      showToast('Food err ' + fcResp.status + ': ' + detail.substring(0, 80), true);
       return;
     }
     const compResp = await apiFetch(API_BASE + '/api/runsheet/item/' + currentModalItem.id + '/complete', { method: 'POST' });
     if (!compResp.ok) {
       const detail = await compResp.text().catch(() => '');
-      console.error('complete failed:', compResp.status, detail);
       closeFoodModal(true);
-      showToast('Complete failed (' + compResp.status + ')', true);
+      showToast('Done err ' + compResp.status + ': ' + detail.substring(0, 80), true);
       return;
     }
     closeFoodModal(true);
     showToast([...modalSelected].join(' + ') + ' \u2014 done \u2713'); loadPlan();
   } catch (e) {
-    console.error('confirmMultiSelect error:', e.message, e.stack);
     closeFoodModal(true);
-    showToast('Network error: ' + (e.message || 'unknown'), true);
+    showToast('Net err: ' + (e.message || 'unknown'), true);
   }
 }
 
-// popBack: true when the user explicitly closed it (need to pop history state)
-//          false when called from popstate handler (browser already navigated)
 function closeFoodModal(popBack) {
   document.getElementById('foodModal').classList.remove('open');
   if (popBack) history.back();
@@ -572,7 +569,7 @@ async function addItem() {
 function showToast(msg, warn) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.className = 'toast show' + (warn ? ' warn' : '');
-  setTimeout(() => t.className = 'toast', 2000);
+  setTimeout(() => t.className = 'toast', 4000);
 }
 
 document.addEventListener('DOMContentLoaded', init);
