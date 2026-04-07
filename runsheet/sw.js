@@ -1,4 +1,4 @@
-const CACHE_NAME = 'runsheet-v10';
+const CACHE_NAME = 'runsheet-v11';
 const STATIC_ASSETS = [
   '/runsheet/',
   '/runsheet/index.html',
@@ -21,6 +21,12 @@ self.addEventListener('activate', e => {
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
+     .then(() => {
+       // Notify all open tabs so the inline controllerchange listener reloads them
+       return self.clients.matchAll({ type: 'window' }).then(clients => {
+         clients.forEach(client => client.navigate(client.url));
+       });
+     })
   );
 });
 

@@ -35,7 +35,6 @@
         <div class="subtitle" id="dayLabel"></div>
       </div>
       <div class="header-actions">
-        <button class="icon-btn" id="regenBtn" title="Regenerate plan">&#x1F504;</button>
         <button class="icon-btn" id="addBtn" title="Add item">+</button>
         <a href="pantry.html" class="icon-btn" title="Pantry">&#x1F34E;</a>
       </div>
@@ -94,6 +93,18 @@
 
   <!-- Toast -->
   <div class="toast" id="toast"></div>
+
+  <!-- Force-reload when a new service worker activates.
+       This MUST be inline (not in app.js) because the old cached app.js
+       won't have it — that's exactly the problem we're solving. -->
+  <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('controllerchange', function() {
+      // A new SW just took control — reload to get fresh assets
+      window.location.reload();
+    });
+  }
+  </script>
 
   <script src="app.js"></script>
 </body>
